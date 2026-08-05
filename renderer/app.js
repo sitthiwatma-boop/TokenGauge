@@ -291,6 +291,9 @@ async function boot() {
   document.getElementById('s-refresh').value = config.refreshSeconds;
   document.getElementById('s-alert').value = config.alertThreshold;
   document.getElementById('s-weekly').value = config.weeklyMode;
+  const op = Math.round((config.miniOpacity ?? 1) * 100);
+  document.getElementById('s-opacity').value = op;
+  document.getElementById('s-opacity-val').textContent = op + '%';
   renderSettings();
 }
 
@@ -365,6 +368,10 @@ document.getElementById('t-boot').onchange = (e) => setCfg({ startWithWindows: e
 document.getElementById('s-refresh').onchange = (e) => setCfg({ refreshSeconds: Number(e.target.value) });
 document.getElementById('s-alert').onchange = (e) => setCfg({ alertThreshold: Number(e.target.value) });
 document.getElementById('s-weekly').onchange = (e) => setCfg({ weeklyMode: e.target.value });
+document.getElementById('s-opacity').oninput = (e) => {
+  document.getElementById('s-opacity-val').textContent = e.target.value + '%';
+  setCfg({ miniOpacity: Number(e.target.value) / 100 });
+};
 
 document.addEventListener('change', async (e) => {
   const group = e.target.closest('.pgroup');

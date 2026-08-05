@@ -355,6 +355,8 @@ body.mini .live-dot { display: none; }
   user-select: text;
 }
 .field input:focus, .field select:focus { outline: 2px solid #2f6fd0; outline-offset: 1px; }
+.field input[type=range] { width: 100%; accent-color: #2f6fd0; padding: 0; }
+.field label b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .pgroup { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
 .pgroup h3 { margin: 0 0 10px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
 .pgroup h3 b { width: 8px; height: 8px; border-radius: 50%; }

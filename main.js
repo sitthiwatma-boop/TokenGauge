@@ -239,7 +239,9 @@ ipcMain.handle('set-config', (_e, patch) => {
   if (win) {
     win.setSkipTaskbar(!config.showInTaskbar);
     if (!miniMode) win.setAlwaysOnTop(!!config.alwaysOnTop);
+    if (miniMode && 'miniOpacity' in patch) win.setOpacity(Number(config.miniOpacity) || 1);
   }
+  if ('miniOpacity' in patch) rebuildTrayMenu(); // ให้ radio ใน tray ตรงกับค่าล่าสุด
   app.setLoginItemSettings({ openAtLogin: !!config.startWithWindows });
   restartTimer();
   pushUsage();
