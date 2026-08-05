@@ -13,9 +13,13 @@ const path = require('path');
 const os = require('os');
 const https = require('https');
 
-const CACHE_MS = 45 * 1000; // กันยิง API ถี่เกิน แม้ผู้ใช้ตั้งรีเฟรช 10 วิ
+const CACHE_MS = 120 * 1000; // กันยิง API ถี่เกิน แม้ผู้ใช้ตั้งรีเฟรช 10 วิ
+const STALE_MS = 15 * 60 * 1000; // ค่าดีล่าสุดยังเชื่อถือได้ภายใน 15 นาที
+const BACKOFF_MS = 10 * 60 * 1000; // โดน 429 แล้วพักยาว
 
 let cache = { at: 0, data: null, error: null };
+let lastGood = { at: 0, data: null }; // เก็บผลสำเร็จล่าสุดไว้ใช้ตอน API ล่ม จะได้ไม่ดิ่งไปค่าประมาณ
+let backoffUntil = 0;
 
 function readAccessToken() {
   const p = path.join(os.homedir(), '.claude', '.credentials.json');
@@ -87,6 +91,11 @@ async function fetchLive() {
     if (cache.error) throw new Error(cache.error);
     if (cache.data) return cache.data;
   }
+  // ช่วงพักหลังโดน 429: เสิร์ฟค่าดีล่าสุดถ้ายังไม่เก่าเกิน ไม่ยิงซ้ำ
+  if (now < backoffUntil) {
+    if (lastGood.data && now - lastGood.at < STALE_MS) return lastGood.data;
+    throw new Error('ถูกจำกัดคำขอชั่วคราว — ใช้ค่าประมาณระหว่างรอ');
+  }
   try {
     const json = await request(readAccessToken());
     const data = {
@@ -96,9 +105,17 @@ async function fetchLive() {
     };
     if (!data.session && !data.weekly) throw new Error('โครงสร้างคำตอบ API ไม่ตรงที่คาด');
     cache = { at: now, data, error: null };
+    lastGood = { at: now, data };
     return data;
   } catch (err) {
-    cache = { at: now, data: null, error: String(err.message || err) };
+    const msg = String(err.message || err);
+    if (msg.includes('429')) backoffUntil = now + BACKOFF_MS;
+    // API ล่มชั่วคราว แต่ค่าดีล่าสุดยังสดพอ → ใช้ต่อ ดีกว่าสลับไปค่าประมาณที่แกว่งแรง
+    if (lastGood.data && now - lastGood.at < STALE_MS) {
+      cache = { at: now, data: lastGood.data, error: null };
+      return lastGood.data;
+    }
+    cache = { at: now, data: null, error: msg };
     throw err;
   }
 }
