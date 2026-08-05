@@ -62,6 +62,14 @@ function createTray() {
   rebuildTrayMenu();
 }
 
+const OPACITY_STEPS = [
+  { label: 'ทึบ 100%', value: 1 },
+  { label: '85%', value: 0.85 },
+  { label: '70%', value: 0.7 },
+  { label: '55%', value: 0.55 },
+  { label: 'จาง 40%', value: 0.4 }
+];
+
 function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(
@@ -75,10 +83,26 @@ function rebuildTrayMenu() {
         checked: miniMode,
         click: () => setMini(!miniMode)
       },
+      {
+        label: 'ความเข้มวิดเจ็ต',
+        submenu: OPACITY_STEPS.map((s) => ({
+          label: s.label,
+          type: 'radio',
+          checked: Math.abs((config.miniOpacity ?? 1) - s.value) < 0.01,
+          click: () => setMiniOpacity(s.value)
+        }))
+      },
       { type: 'separator' },
       { label: 'ออกจากโปรแกรม', click: () => (app.isQuitting = true, app.quit()) }
     ])
   );
+}
+
+function setMiniOpacity(v) {
+  config.miniOpacity = v;
+  cfgStore.save(app, config);
+  if (win && miniMode) win.setOpacity(v);
+  rebuildTrayMenu();
 }
 
 const MINI_W = 380, MINI_H = 168, MINI_GAP = 12;
@@ -95,12 +119,14 @@ function setMini(on) {
     // เกาะมุมขวาล่างของพื้นที่ทำงาน (เหนือ taskbar)
     const wa = screen.getPrimaryDisplay().workArea;
     win.setPosition(wa.x + wa.width - MINI_W - MINI_GAP, wa.y + wa.height - MINI_H - MINI_GAP);
+    win.setOpacity(Number(config.miniOpacity) || 1);
     win.show();
   } else {
     win.setResizable(true);
     win.setAlwaysOnTop(!!config.alwaysOnTop);
     win.setMinimumSize(720, 520);
     win.setSize(1080, 720);
+    win.setOpacity(1);
     win.center();
   }
   win.webContents.send('mini-mode', on);

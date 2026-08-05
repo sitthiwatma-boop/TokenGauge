@@ -76,6 +76,7 @@ const DEFAULTS = {
   startWithWindows: false,
   weeklyMode: 'rolling', // 'rolling' = ย้อนหลัง 7 วัน | 'calendar' = ตั้งแต่วันจันทร์
   miniMode: false, // วิดเจ็ตเล็กมุมขวาล่าง (จำสถานะข้ามการเปิดแอป)
+  miniOpacity: 1, // ความทึบของวิดเจ็ต 0.4–1 ปรับจากเมนู tray
   theme: 'dark',
   providers: DEFAULT_PROVIDERS
 };

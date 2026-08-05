@@ -379,10 +379,10 @@ body.mini #mini-restore {
   width: 22px; height: 22px; border-radius: 7px;
   border: 1px solid var(--line-strong); background: rgba(15, 20, 28, 0.88);
   color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
-  opacity: 0; transition: opacity 0.15s;
+  /* ต้องแสดงตลอด — hover ใช้ไม่ได้เพราะ drag region กินเหตุการณ์เมาส์ */
+  opacity: 0.55; transition: opacity 0.15s;
   -webkit-app-region: no-drag;
 }
-body.mini:hover #mini-restore { opacity: 1; }
 #mini-restore:hover { color: var(--text); border-color: #2f6fd0; }
 body.mini .head, body.mini .bottom, body.mini .gauge, body.mini .spark, body.mini .rows, body.mini .foot .k { display: none; }
 body.mini .grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
