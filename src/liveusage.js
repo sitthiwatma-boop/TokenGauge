@@ -103,4 +103,87 @@ async function fetchLive() {
   }
 }
 
-module.exports = { fetchLive };
+/* ---------- ChatGPT (Codex CLI) — % ทางการจาก log ในเครื่อง ไม่ต้องต่อเน็ต ----------
+ * Codex CLI จด rate_limits (used_percent, resets_at) ลงไฟล์ session .jsonl เอง
+ * เราแค่หาบรรทัดล่าสุด — ไฟล์ใหญ่ได้หลายร้อย MB จึงอ่านเฉพาะท้ายไฟล์
+ */
+
+function newestJsonl(roots, limit = 3) {
+  const files = [];
+  const walk = (dir, depth = 0) => {
+    if (depth > 8) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full, depth + 1);
+      else if (e.isFile() && /\.jsonl$/i.test(e.name)) {
+        try {
+          files.push({ path: full, mtime: fs.statSync(full).mtimeMs });
+        } catch { /* ไฟล์หายระหว่างเดิน ข้ามได้ */ }
+      }
+    }
+  };
+  for (const r of roots || []) walk(r);
+  return files.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
+}
+
+function readTail(file, bytes = 262144) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const len = Math.min(bytes, size);
+    const buf = Buffer.alloc(len);
+    fs.readSync(fd, buf, 0, len, size - len);
+    return buf.toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function mapCodexWindow(w, ts) {
+  if (!w || typeof w.used_percent !== 'number') return null;
+  const resetAt = w.resets_at ? w.resets_at * 1000 : ts + (w.window_minutes || 0) * 60000;
+  // หน้าต่างรีเซ็ตไปแล้วและไม่มี event ใหม่กว่า = ไม่ได้ใช้เลยหลังรีเซ็ต → 0%
+  if (Date.now() >= resetAt) return { pct: 0, resetAt: null };
+  return { pct: Math.max(0, Math.min(999, w.used_percent)), resetAt };
+}
+
+/** คืน { session, weekly } หรือ null ถ้าไม่พบข้อมูล rate_limits เลย */
+function fetchCodexLive(roots) {
+  for (const f of newestJsonl(roots)) {
+    let lines;
+    try {
+      lines = readTail(f.path).split('\n');
+    } catch {
+      continue;
+    }
+    // เริ่มที่ 1 เพราะบรรทัดแรกของ chunk มักโดนตัดครึ่ง
+    for (let i = lines.length - 1; i >= 1; i--) {
+      const s = lines[i].trim();
+      if (!s || !s.includes('"rate_limits"')) continue;
+      try {
+        const obj = JSON.parse(s);
+        const rl = obj?.payload?.rate_limits || obj?.rate_limits;
+        if (!rl) continue;
+        const ts = Date.parse(obj.timestamp) || f.mtime;
+        const out = { session: null, weekly: null };
+        for (const w of [rl.primary, rl.secondary]) {
+          const m = mapCodexWindow(w, ts);
+          if (!m) continue;
+          // ≤10 ชม. ถือเป็นหน้าต่าง session, ยาวกว่านั้นคือรายสัปดาห์
+          if ((w.window_minutes || 0) <= 600) out.session = m;
+          else out.weekly = m;
+        }
+        if (out.session || out.weekly) return out;
+      } catch { /* บรรทัดแตก ข้าม */ }
+    }
+  }
+  return null;
+}
+
+module.exports = { fetchLive, fetchCodexLive };

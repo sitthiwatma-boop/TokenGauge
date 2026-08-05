@@ -44,7 +44,9 @@ main.js          main process — หน้าต่าง, Tray, Notification, 
 preload.js       contextBridge เปิด window.api ให้ renderer (จุดเดียวที่ข้ามฝั่งได้)
 src/config.js    ค่าตั้งต้น + PLAN_PRESETS + โหลด/บันทึก config.json ใน userData
 src/usage.js     หัวใจ — เดินหาไฟล์ .jsonl, แกะ token, จัดบล็อก 5 ชม., คำนวณ %
-src/liveusage.js opt-in — ดึง % ทางการจาก API ของ Anthropic (ดูข้อยกเว้นในกฎข้อ 2)
+src/liveusage.js % ทางการ 2 ทาง: Claude ผ่าน API (opt-in, ดูข้อยกเว้นในกฎข้อ 2)
+                 และ ChatGPT จาก rate_limits ใน log ของ Codex เอง (ในเครื่องล้วน ไม่ต่อเน็ต
+                 อ่านเฉพาะท้ายไฟล์เพราะ session log ใหญ่ได้หลายร้อย MB)
 renderer/        UI ล้วน ไม่มี Node API
 ```
 

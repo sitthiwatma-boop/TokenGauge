@@ -159,6 +159,17 @@ async function pushUsage() {
       }
     }
   }
+  // ChatGPT: % ทางการจาก rate_limits ใน log ของ Codex เอง — อ่านในเครื่องล้วน ไม่ต่อเน็ต
+  {
+    const cp = config.providers.chatgpt;
+    const p = data.providers.find((x) => x.id === 'chatgpt');
+    if (cp?.enabled && p && p.ok) {
+      try {
+        const live = liveusage.fetchCodexLive(cp.roots);
+        if (live) applyLive(p, live);
+      } catch { /* ใช้ค่าประมาณต่อ */ }
+    }
+  }
   if (!win || win.isDestroyed()) return;
   win.webContents.send('usage', data);
   updateTrayTitle(data);
