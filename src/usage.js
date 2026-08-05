@@ -226,8 +226,9 @@ function buildSpark(events, w, now) {
   return bins.map((v) => Math.round(v));
 }
 
-/** ยอดถ่วงน้ำหนักรายชั่วโมง key = ms ต้นชั่วโมง — ใช้ป้อน history.json */
-function buildHourly(events, w, now, hours = 48) {
+/** ยอดถ่วงน้ำหนักรายชั่วโมง key = ms ต้นชั่วโมง — ใช้ป้อน history.json
+ * ครอบ 90 วันเต็ม เพื่อ backfill ประวัติจาก log ที่ยังอยู่ ตั้งแต่รันครั้งแรก */
+function buildHourly(events, w, now, hours = 90 * 24) {
   const map = {};
   const from = now - hours * 3600 * 1000;
   for (const e of events) {

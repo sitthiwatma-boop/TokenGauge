@@ -400,6 +400,24 @@ body.mini .pill, body.mini .card-head .s { display: none; }
 body.mini .mark { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
 body.mini .mascot { width: 24px; height: 24px; }
 
+/* หน้าต่างแคบ — ย่อส่วนประกอบให้การ์ด 3 ใบยังอยู่แถวเดียวโดยข้อความไม่ตกบรรทัด */
+@media (max-width: 920px) {
+  .card { padding: 14px; }
+  .card-head { gap: 8px; }
+  .card-head .n { font-size: 13.5px; }
+  .mascot { width: 38px; height: 38px; }
+  .pill { font-size: 9.5px; padding: 3px 7px; }
+  .live-dot { font-size: 9px; padding: 2px 6px; }
+  .gauge svg { width: 150px; height: 95px; }
+  .gauge-val { top: 36px; }
+  .gauge-val b { font-size: 31px; }
+  .gauge-val b i { font-size: 14px; }
+  .row .l span { font-size: 11px; }
+  .row .l em { font-size: 10px; }
+  .foot { font-size: 10px; gap: 6px; }
+  .foot .t { font-size: 13px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }

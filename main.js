@@ -175,7 +175,21 @@ async function pushUsage() {
   for (const p of data.providers) {
     const m = config.providers[p.id]?.manual;
     if (!m || p.live || !p.ok) continue;
-    if (!(m.resetAt > Date.now())) continue; // รอบที่ปักไว้หมดแล้ว กลับไปใช้ค่าประมาณ
+    if (!(m.resetAt > Date.now())) {
+      // รอบที่ปักไว้หมดแล้ว — เตือนครั้งเดียวให้ไปปักใหม่ แล้วกลับไปใช้ค่าประมาณ
+      if (!m.notified) {
+        m.notified = true;
+        cfgStore.save(app, config);
+        if (Notification.isSupported()) {
+          new Notification({
+            title: `${p.name}: รอบโควตาใหม่เริ่มแล้ว`,
+            body: 'ค่าที่ปักหมุดไว้หมดรอบ — เปิดหน้า Usage บนเว็บ แล้วปักหมุด % ใหม่ได้ในหน้าตั้งค่า',
+            icon: ICON
+          }).show();
+        }
+      }
+      continue;
+    }
     p.weekly.pct = Math.max(0, Math.min(999, Number(m.pct) || 0));
     p.weekly.resetAt = m.resetAt;
     p.manual = true;

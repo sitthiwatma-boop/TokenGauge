@@ -144,7 +144,7 @@ function cardHtml(p) {
       <div class="mascot m-${p.id} ${mood}">${mascotSvg(p.id, mood)}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
       ${p.live ? '<span class="live-dot" title="% ทางการจากผู้ให้บริการโดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : p.manual ? '<span class="live-dot man" title="ปักหมุดจากเว็บด้วยมือ — อัปเดตได้ในหน้าตั้งค่า">ปักหมุด</span>' : ''}
-      <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
+      <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'เปลี่ยนแพลนได้ในหน้าตั้งค่า'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
     </div>
 
     <div class="minigauge">
@@ -331,13 +331,9 @@ document.addEventListener('click', async (e) => {
   if (act === 'settings') document.getElementById('sheet').classList.add('open');
 
   if (act === 'plan') {
-    // คลิกป้ายแพลนเพื่อสลับไปแพลนถัดไปอย่างรวดเร็ว
-    const id = e.target.closest('.card').dataset.id;
-    const cur = config.providers[id].plan;
-    const i = PLANS.findIndex((x) => x[0] === cur);
-    const next = PLANS[(i + 1) % PLANS.length][0];
-    config = await window.api.setProvider(id, { plan: next });
-    renderSettings();
+    // เดิมคลิกแล้วสลับแพลนทันที — โดนเผลอคลิกบ่อยจนค่าคลาดเคลื่อน
+    // เปลี่ยนเป็นเปิดหน้าตั้งค่าให้ไปเลือกอย่างตั้งใจแทน
+    document.getElementById('sheet').classList.add('open');
   }
 
   if (act === 'pick') {
