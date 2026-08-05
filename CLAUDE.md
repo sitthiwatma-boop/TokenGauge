@@ -114,6 +114,10 @@ node -e "const u=require('./src/usage');const {PLAN_PRESETS}=require('./src/conf
 
 ## ข้อควรระวังที่เจอมาแล้ว
 
+- **รัน `npm start` จาก shell ของ Claude Code ใน VS Code จะพังทันที** เพราะ shell นั้น
+  มี `ELECTRON_RUN_AS_NODE=1` ติดมา ทำให้ Electron รันเป็น Node ธรรมดา
+  (`ipcMain` เป็น undefined) — ต้องล้างก่อน: `$env:ELECTRON_RUN_AS_NODE=$null; npm start`
+  รันจากเทอร์มินัลปกติหรือกด F5 ไม่มีปัญหานี้
 - `win.on('close')` ถูกดักไว้ให้ซ่อนลง Tray แทนการปิด ถ้าจะเพิ่มปุ่มออกจริง ๆ
   ต้องตั้ง `app.isQuitting = true` ก่อนเรียก `app.quit()`
 - `nativeImage.createFromDataURL` รับ PNG dataURL เท่านั้น ใช้ SVG ไม่ได้
