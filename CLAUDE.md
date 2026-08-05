@@ -25,11 +25,17 @@
 2. **ห้ามส่งข้อมูลออกนอกเครื่อง** ไม่มี telemetry ไม่มี analytics ไม่มี cloud sync
    ถ้าจะเพิ่มฟีเจอร์ที่ต้องต่อเน็ต ต้องถามผู้ใช้ก่อนเสมอ
 
-   > **ข้อยกเว้นเดียวที่ผู้ใช้อนุมัติแล้ว (ส.ค. 2026):** ฟีเจอร์ `liveUsage` ใน `src/liveusage.js`
-   > เป็น opt-in (ปิดเป็นค่าเริ่มต้น) — อ่านเฉพาะ `accessToken` จาก `~/.claude/.credentials.json`
-   > แล้วเรียก `api.anthropic.com/api/oauth/usage` (endpoint เดียวกับคำสั่ง /usage ของ Claude Code)
-   > เพื่อดึง % โควตาทางการ ห้าม log/เก็บ/ส่ง token ไปที่อื่น และห้ามขยายขอบเขตนี้
-   > โดยไม่ถามผู้ใช้ใหม่
+   > **ข้อยกเว้นที่ผู้ใช้อนุมัติแล้ว (ส.ค. 2026) มี 2 อย่างเท่านั้น:**
+   >
+   > 1) `liveUsage` ใน `src/liveusage.js` — opt-in (ปิดเป็นค่าเริ่มต้น)
+   > อ่านเฉพาะ `accessToken` จาก `~/.claude/.credentials.json` แล้วเรียก
+   > `api.anthropic.com/api/oauth/usage` (endpoint เดียวกับคำสั่ง /usage ของ Claude Code)
+   > เพื่อดึง % โควตาทางการ ห้าม log/เก็บ/ส่ง token ไปที่อื่น
+   >
+   > 2) `autoUpdate` — เช็คเวอร์ชันใหม่จาก GitHub Releases ของโปรเจกต์นี้เอง
+   > ทำงานเฉพาะตัวที่แพ็กเป็น .exe แล้ว ปิดได้ด้วย `autoUpdate: false` ใน config
+   >
+   > ห้ามขยายขอบเขตสองข้อนี้ หรือเพิ่มข้อยกเว้นใหม่ โดยไม่ถามผู้ใช้ก่อน
 3. **`contextIsolation: true` และ `nodeIntegration: false`** ห้ามปิด
    ทุกอย่างที่ renderer ต้องใช้ ให้ผ่าน `preload.js` เท่านั้น
 4. **ไม่พึ่งพา CDN หรือฟอนต์ออนไลน์** แอปต้องทำงานได้แม้ออฟไลน์

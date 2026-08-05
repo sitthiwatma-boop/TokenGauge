@@ -34,11 +34,21 @@
       ],
       "icon": "assets/icon.png"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YOUR-GITHUB-USERNAME",
+        "repo": "tokengauge"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "TokenGauge"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

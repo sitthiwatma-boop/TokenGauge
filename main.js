@@ -494,6 +494,18 @@ if (!single) {
     createTray();
     restartTimer();
     setTimeout(pushUsage, 600);
+
+    // auto-update ผ่าน GitHub Releases — ทำงานเฉพาะตัวที่แพ็กเป็น .exe แล้ว
+    // และปิดได้ด้วย config.autoUpdate = false (ข้อยกเว้นเรื่องต่อเน็ต ดู CLAUDE.md)
+    if (app.isPackaged && config.autoUpdate !== false) {
+      try {
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.on('update-downloaded', (info) => {
+          notify('TokenGauge มีเวอร์ชันใหม่', `v${info.version} จะติดตั้งอัตโนมัติเมื่อปิดโปรแกรม`);
+        });
+        autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+      } catch { /* ไม่มี electron-updater ก็ข้ามไป */ }
+    }
   });
 
   app.on('before-quit', () => history.flush(app)); // เขียนประวัติที่ค้างก่อนปิด
