@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const cfgStore = require('./src/config');
@@ -33,7 +33,10 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => {
+    win.show();
+    if (config.miniMode) setMini(true);
+  });
   win.on('close', (e) => {
     // ปิดหน้าต่าง = ย่อลง tray ไม่ใช่ออกจากโปรแกรม
     if (!app.isQuitting) {
@@ -78,13 +81,19 @@ function rebuildTrayMenu() {
   );
 }
 
+const MINI_W = 360, MINI_H = 190, MINI_GAP = 12;
+
 function setMini(on) {
   miniMode = on;
   if (!win) return;
   if (on) {
     win.setResizable(false);
     win.setAlwaysOnTop(true, 'screen-saver');
-    win.setSize(360, 190);
+    win.setSize(MINI_W, MINI_H);
+    // เกาะมุมขวาล่างของพื้นที่ทำงาน (เหนือ taskbar)
+    const wa = screen.getPrimaryDisplay().workArea;
+    win.setPosition(wa.x + wa.width - MINI_W - MINI_GAP, wa.y + wa.height - MINI_H - MINI_GAP);
+    win.show();
   } else {
     win.setResizable(true);
     win.setAlwaysOnTop(!!config.alwaysOnTop);
@@ -92,6 +101,11 @@ function setMini(on) {
     win.center();
   }
   win.webContents.send('mini-mode', on);
+  // จำสถานะไว้ เปิดแอปใหม่จะกลับมาเป็นวิดเจ็ตเหมือนเดิม
+  if (config.miniMode !== on) {
+    config.miniMode = on;
+    cfgStore.save(app, config);
+  }
   rebuildTrayMenu();
 }
 
@@ -262,6 +276,8 @@ ipcMain.on('window', (_e, action) => {
   else if (action === 'close') win.hide();
   else if (action === 'mini') setMini(!miniMode);
 });
+
+ipcMain.on('set-mini', (_e, on) => setMini(!!on));
 
 // ไอคอน tray แบบมีตัวเลข % วาดจาก canvas ในหน้าต่าง แล้วส่งกลับมาเป็น PNG
 ipcMain.on('tray-icon', (_e, dataUrl) => {

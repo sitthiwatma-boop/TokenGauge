@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   exportCsv: () => ipcRenderer.invoke('export-csv'),
   window: (action) => ipcRenderer.send('window', action),
+  setMini: (on) => ipcRenderer.send('set-mini', !!on),
   sendTrayIcon: (dataUrl) => ipcRenderer.send('tray-icon', dataUrl),
   onUsage: (cb) => ipcRenderer.on('usage', (_e, d) => cb(d)),
   onMiniMode: (cb) => ipcRenderer.on('mini-mode', (_e, v) => cb(v))

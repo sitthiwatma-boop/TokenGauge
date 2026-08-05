@@ -273,6 +273,8 @@ function renderSettings() {
 
 async function boot() {
   config = await window.api.getConfig();
+  document.getElementById('t-mini').checked = !!config.miniMode;
+  document.body.classList.toggle('mini', !!config.miniMode);
   document.getElementById('t-taskbar').checked = config.showInTaskbar;
   document.getElementById('t-top').checked = config.alwaysOnTop;
   document.getElementById('t-boot').checked = config.startWithWindows;
@@ -345,6 +347,7 @@ document.getElementById('w-close').onclick = () => window.api.window('close');
 document.getElementById('w-mini').onclick = () => window.api.window('mini');
 
 const setCfg = async (patch) => (config = await window.api.setConfig(patch));
+document.getElementById('t-mini').onchange = (e) => window.api.setMini(e.target.checked);
 document.getElementById('t-taskbar').onchange = (e) => setCfg({ showInTaskbar: e.target.checked });
 document.getElementById('t-top').onchange = (e) => setCfg({ alwaysOnTop: e.target.checked });
 document.getElementById('t-boot').onchange = (e) => setCfg({ startWithWindows: e.target.checked });
@@ -366,6 +369,9 @@ window.api.onUsage((d) => {
   state = d;
   render();
 });
-window.api.onMiniMode((on) => document.body.classList.toggle('mini', on));
+window.api.onMiniMode((on) => {
+  document.body.classList.toggle('mini', on);
+  document.getElementById('t-mini').checked = on;
+});
 
 boot();

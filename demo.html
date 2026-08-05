@@ -391,6 +391,7 @@ body.mini .mascot { width: 24px; height: 24px; }
 </main>
 
 <div class="bottom">
+  <label class="toggle"><input type="checkbox" id="t-mini"><i class="sw"></i>ย่อเล็กมุมจอ</label>
   <label class="toggle"><input type="checkbox" id="t-taskbar"><i class="sw"></i>แสดงในแถบงาน</label>
   <label class="toggle"><input type="checkbox" id="t-top"><i class="sw"></i>ลอยอยู่บนสุด</label>
   <label class="toggle"><input type="checkbox" id="t-boot"><i class="sw"></i>เปิดพร้อม Windows</label>
@@ -466,6 +467,7 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
   _cb&&_cb(MOCK);return{ok:true,calibration:cal,config:CFG};},
  refresh:async()=>{MOCK.updatedAt=Date.now();_cb&&_cb(MOCK);},
  pickFolder:async()=>null,exportCsv:async()=>null,window:()=>{},sendTrayIcon:()=>{},
+ setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},
  onUsage:cb=>{_cb=cb;setTimeout(()=>cb(MOCK),80);},onMiniMode:()=>{}};
 </script>
 <script>'use strict';
@@ -740,6 +742,8 @@ function renderSettings() {
 
 async function boot() {
   config = await window.api.getConfig();
+  document.getElementById('t-mini').checked = !!config.miniMode;
+  document.body.classList.toggle('mini', !!config.miniMode);
   document.getElementById('t-taskbar').checked = config.showInTaskbar;
   document.getElementById('t-top').checked = config.alwaysOnTop;
   document.getElementById('t-boot').checked = config.startWithWindows;
@@ -812,6 +816,7 @@ document.getElementById('w-close').onclick = () => window.api.window('close');
 document.getElementById('w-mini').onclick = () => window.api.window('mini');
 
 const setCfg = async (patch) => (config = await window.api.setConfig(patch));
+document.getElementById('t-mini').onchange = (e) => window.api.setMini(e.target.checked);
 document.getElementById('t-taskbar').onchange = (e) => setCfg({ showInTaskbar: e.target.checked });
 document.getElementById('t-top').onchange = (e) => setCfg({ alwaysOnTop: e.target.checked });
 document.getElementById('t-boot').onchange = (e) => setCfg({ startWithWindows: e.target.checked });
@@ -833,7 +838,10 @@ window.api.onUsage((d) => {
   state = d;
   render();
 });
-window.api.onMiniMode((on) => document.body.classList.toggle('mini', on));
+window.api.onMiniMode((on) => {
+  document.body.classList.toggle('mini', on);
+  document.getElementById('t-mini').checked = on;
+});
 
 boot();
 </script>

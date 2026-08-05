@@ -75,6 +75,7 @@ const DEFAULTS = {
   alwaysOnTop: false,
   startWithWindows: false,
   weeklyMode: 'rolling', // 'rolling' = ย้อนหลัง 7 วัน | 'calendar' = ตั้งแต่วันจันทร์
+  miniMode: false, // วิดเจ็ตเล็กมุมขวาล่าง (จำสถานะข้ามการเปิดแอป)
   theme: 'dark',
   providers: DEFAULT_PROVIDERS
 };
