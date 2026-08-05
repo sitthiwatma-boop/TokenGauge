@@ -132,6 +132,9 @@ node -e "const u=require('./src/usage');const {PLAN_PRESETS}=require('./src/conf
 
 ## ข้อควรระวังที่เจอมาแล้ว
 
+- **ห้ามแก้ `config.json` ใน userData ขณะแอปกำลังรัน** — แอปถือ config ในหน่วยความจำ
+  และเขียนทับทั้งไฟล์ทุกครั้งที่ผู้ใช้เปลี่ยนการตั้งค่า ค่าที่แก้ตรง ๆ จะหายเงียบ ๆ
+  (เคยทำค่าปักหมุดหายมาแล้ว) ต้องปิดแอปก่อนแก้ไฟล์เสมอ
 - **รัน `npm start` จาก shell ของ Claude Code ใน VS Code จะพังทันที** เพราะ shell นั้น
   มี `ELECTRON_RUN_AS_NODE=1` ติดมา ทำให้ Electron รันเป็น Node ธรรมดา
   (`ipcMain` เป็น undefined) — ต้องล้างก่อน: `$env:ELECTRON_RUN_AS_NODE=$null; npm start`
