@@ -156,7 +156,8 @@ function readTail(file, bytes = 262144) {
     const len = Math.min(bytes, size);
     const buf = Buffer.alloc(len);
     fs.readSync(fd, buf, 0, len, size - len);
-    return buf.toString('utf8');
+    // truncated = อ่านมาไม่ครบไฟล์ → บรรทัดแรกของ chunk อาจโดนตัดครึ่ง
+    return { text: buf.toString('utf8'), truncated: size > len };
   } finally {
     fs.closeSync(fd);
   }
@@ -175,14 +176,16 @@ function mapCodexWindow(w, ts) {
 /** คืน { session, weekly } หรือ null ถ้าไม่พบข้อมูล rate_limits เลย */
 function fetchCodexLive(roots) {
   for (const f of newestJsonl(roots)) {
-    let lines;
+    let tail;
     try {
-      lines = readTail(f.path).split('\n');
+      tail = readTail(f.path);
     } catch {
       continue;
     }
-    // เริ่มที่ 1 เพราะบรรทัดแรกของ chunk มักโดนตัดครึ่ง
-    for (let i = lines.length - 1; i >= 1; i--) {
+    const lines = tail.text.split('\n');
+    // ข้ามบรรทัดแรกเฉพาะตอนอ่านไม่ครบไฟล์ (มันอาจโดนตัดครึ่ง) — ไฟล์เล็กต้องอ่านครบทุกบรรทัด
+    const first = tail.truncated ? 1 : 0;
+    for (let i = lines.length - 1; i >= first; i--) {
       const s = lines[i].trim();
       if (!s || !s.includes('"rate_limits"')) continue;
       try {

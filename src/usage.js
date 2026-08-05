@@ -226,6 +226,19 @@ function buildSpark(events, w, now) {
   return bins.map((v) => Math.round(v));
 }
 
+/** ยอดถ่วงน้ำหนักรายชั่วโมง key = ms ต้นชั่วโมง — ใช้ป้อน history.json */
+function buildHourly(events, w, now, hours = 48) {
+  const map = {};
+  const from = now - hours * 3600 * 1000;
+  for (const e of events) {
+    if (e.ts < from) continue;
+    const h = Math.floor(e.ts / 3600000) * 3600000;
+    map[h] = (map[h] || 0) + weighted(e, w);
+  }
+  for (const k of Object.keys(map)) map[k] = Math.round(map[k]);
+  return map;
+}
+
 function computeProvider(provider, presets, opts = {}) {
   const now = opts.now || Date.now();
   const w = provider.cacheReadWeight ?? 0.1;
@@ -299,6 +312,7 @@ function computeProvider(provider, presets, opts = {}) {
     burnPerHour: Math.round(burnPerHour),
     etaMs,
     spark: buildSpark(events, w, now),
+    hourly: buildHourly(events, w, now),
     totalEvents: events.length,
     lastActivity: events[events.length - 1].ts
   };

@@ -47,6 +47,11 @@ src/usage.js     หัวใจ — เดินหาไฟล์ .jsonl, แ�
 src/liveusage.js % ทางการ 2 ทาง: Claude ผ่าน API (opt-in, ดูข้อยกเว้นในกฎข้อ 2)
                  และ ChatGPT จาก rate_limits ใน log ของ Codex เอง (ในเครื่องล้วน ไม่ต่อเน็ต
                  อ่านเฉพาะท้ายไฟล์เพราะ session log ใหญ่ได้หลายร้อย MB)
+src/history.js   เก็บสรุปรายชั่วโมงลง history.json ใน userData 90 วัน
+                 กราฟ 24 ชม. อ่านจากไฟล์นี้ — ประวัติไม่หายแม้ log ต้นทางถูกลบ
+                 เขียนไฟล์เฉพาะเมื่อค่าเปลี่ยนและเว้น ≥5 นาที
+scripts/         build-demo.js ประกอบ demo.html + demo-mock.js (mock ของ window.api)
+test/            all.test.js — `npm test` ต้องผ่านก่อน commit ตรรกะใน src/ ทุกครั้ง
 renderer/        UI ล้วน ไม่มี Node API
 ```
 
@@ -113,6 +118,8 @@ Grok = ยูเอฟโอม่วง) วาดใน `mascotSvg()` ขอ�
 npm install        # ครั้งแรกครั้งเดียว
 npm start          # รันแอป
 npm run dev        # รันพร้อม flag --dev
+npm test           # เทสต์ตรรกะทั้งหมด — รันก่อน commit เสมอ
+npm run build:demo # ประกอบ demo.html ใหม่หลังแก้ renderer/
 npm run build      # สร้าง .exe ลงโฟลเดอร์ dist/
 ```
 

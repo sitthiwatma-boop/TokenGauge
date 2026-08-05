@@ -5,6 +5,7 @@ const fs = require('fs');
 const cfgStore = require('./src/config');
 const usage = require('./src/usage');
 const liveusage = require('./src/liveusage');
+const history = require('./src/history');
 
 let win = null;
 let tray = null;
@@ -178,6 +179,14 @@ async function pushUsage() {
     p.weekly.pct = Math.max(0, Math.min(999, Number(m.pct) || 0));
     p.weekly.resetAt = m.resetAt;
     p.manual = true;
+  }
+  // บันทึกประวัติรายชั่วโมง แล้วให้กราฟ 24 ชม. อ่านจากประวัติแทน — ข้อมูลไม่หายแม้ log ถูกลบ
+  history.record(app, data.providers);
+  for (const p of data.providers) {
+    if (!p.ok) continue;
+    const bins = history.sparkFrom(app, p.id);
+    if (bins) p.spark = bins;
+    delete p.hourly; // ใช้ภายใน ไม่ต้องส่งไป renderer
   }
   if (!win || win.isDestroyed()) return;
   win.webContents.send('usage', data);
@@ -358,6 +367,8 @@ if (!single) {
     restartTimer();
     setTimeout(pushUsage, 600);
   });
+
+  app.on('before-quit', () => history.flush(app)); // เขียนประวัติที่ค้างก่อนปิด
 
   app.on('window-all-closed', (e) => e.preventDefault()); // อยู่ใน tray ต่อ
   app.on('activate', () => (BrowserWindow.getAllWindows().length === 0 ? createWindow() : null));
