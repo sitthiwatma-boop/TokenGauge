@@ -425,7 +425,18 @@ async function boot() {
   const op = Math.round((config.miniOpacity ?? 1) * 100);
   document.getElementById('s-opacity').value = op;
   document.getElementById('s-opacity-val').textContent = op + '%';
+  document.getElementById('t-daily').checked = config.dailySummary?.enabled !== false;
+  document.getElementById('s-daily-hour').value = config.dailySummary?.hour ?? 21;
   renderSettings();
+}
+
+function saveDailySummary() {
+  setCfg({
+    dailySummary: {
+      enabled: document.getElementById('t-daily').checked,
+      hour: Math.min(23, Math.max(0, Number(document.getElementById('s-daily-hour').value) || 21))
+    }
+  });
 }
 
 /* ---------- เหตุการณ์ ---------- */
@@ -523,6 +534,8 @@ document.getElementById('s-opacity').oninput = (e) => {
   document.getElementById('s-opacity-val').textContent = e.target.value + '%';
   setCfg({ miniOpacity: Number(e.target.value) / 100 });
 };
+document.getElementById('t-daily').onchange = saveDailySummary;
+document.getElementById('s-daily-hour').onchange = saveDailySummary;
 
 document.addEventListener('change', async (e) => {
   const group = e.target.closest('.pgroup');
