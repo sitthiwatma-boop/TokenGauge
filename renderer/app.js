@@ -84,6 +84,7 @@ function cardHtml(p) {
     <div class="card-head">
       <div class="mark">${monogram}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
+      ${p.live ? '<span class="live-dot" title="% ทางการจาก claude.ai โดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : ''}
       <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
     </div>
 
@@ -211,6 +212,12 @@ function renderSettings() {
         </div>
         <p class="cal-note" data-role="cal-note">${calNoteHtml(p)}</p>
       </div>
+      ${p.id === 'claude' ? `
+      <div class="field" style="margin-bottom:8px">
+        <label class="toggle"><input type="checkbox" data-f="live" ${p.liveUsage ? 'checked' : ''}><i class="sw"></i>ดึง % ทางการจาก claude.ai (เรียลไทม์)</label>
+        <p class="cal-note">เมื่อเปิด แอปจะอ่าน token ของ Claude Code ในเครื่อง แล้วต่อเน็ตหา Anthropic
+        ที่เดียวเท่านั้นเพื่อถาม % ทางการ — เป็นข้อยกเว้นเดียวจากกฎออฟไลน์ของแอป ปิดได้ตลอดเวลา</p>
+      </div>` : ''}
       <label class="toggle"><input type="checkbox" data-f="enabled" ${p.enabled ? 'checked' : ''}><i class="sw"></i>เปิดใช้งานการ์ดนี้</label>
     </div>`
     )
@@ -303,6 +310,7 @@ document.addEventListener('change', async (e) => {
   if (!group) return;
   const f = e.target.dataset.f;
   if (f === 'plan') config = await window.api.setProvider(group.dataset.id, { plan: e.target.value });
+  if (f === 'live') config = await window.api.setProvider(group.dataset.id, { liveUsage: e.target.checked });
   if (f === 'enabled') config = await window.api.setProvider(group.dataset.id, { enabled: e.target.checked });
   if (f === 'root') config = await window.api.setProvider(group.dataset.id, { roots: [e.target.value] });
 });

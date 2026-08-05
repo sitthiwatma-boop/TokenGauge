@@ -24,6 +24,7 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'max5',
     calibration: null, // { session, weekly, at } — ลิมิตจริงที่ผู้ใช้ปรับเทียบเอง มีค่าแล้วจะชนะ preset
+    liveUsage: false, // opt-in: ดึง % ทางการจาก API ของ Anthropic (อ่าน token ของ Claude Code + ต่อเน็ต)
     windows: { session: true, weekly: true }
   },
   chatgpt: {

@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const cfgStore = require('./src/config');
 const usage = require('./src/usage');
+const liveusage = require('./src/liveusage');
 
 let win = null;
 let tray = null;
@@ -96,7 +97,7 @@ function setMini(on) {
 
 /* ---------- วงจรอ่านข้อมูล ---------- */
 
-function pushUsage() {
+async function pushUsage() {
   if (!win || win.isDestroyed()) return;
   let data;
   try {
@@ -104,9 +105,44 @@ function pushUsage() {
   } catch (err) {
     data = { updatedAt: Date.now(), providers: [], error: String(err.message || err) };
   }
+  // opt-in: ทับตัวเลขประมาณด้วย % ทางการจาก API (เฉพาะการ์ด Claude)
+  if (config.providers.claude?.liveUsage) {
+    const p = data.providers.find((x) => x.id === 'claude');
+    if (p && p.ok) {
+      try {
+        applyLive(p, await liveusage.fetchLive());
+      } catch (err) {
+        p.liveError = String(err.message || err);
+      }
+    }
+  }
+  if (!win || win.isDestroyed()) return;
   win.webContents.send('usage', data);
   updateTrayTitle(data);
   checkAlerts(data);
+}
+
+/** แทน % ประมาณด้วย % ทางการ แล้วคำนวณลิมิตย้อนกลับจาก token ที่นับได้ */
+function applyLive(p, live) {
+  if (live.session) {
+    p.session.pct = live.session.pct;
+    if (live.session.resetAt) p.session.resetAt = live.session.resetAt;
+    if (p.session.tokens > 0 && live.session.pct >= 1) {
+      p.session.limit = Math.round(p.session.tokens / (live.session.pct / 100));
+    }
+    if (p.burnPerHour > 0) {
+      const remain = p.session.limit - p.session.tokens;
+      p.etaMs = remain > 0 ? (remain / p.burnPerHour) * 3600000 : 0;
+    }
+  }
+  if (live.weekly) {
+    p.weekly.pct = live.weekly.pct;
+    if (live.weekly.resetAt) p.weekly.resetAt = live.weekly.resetAt;
+    if (p.weekly.tokens > 0 && live.weekly.pct >= 1) {
+      p.weekly.limit = Math.round(p.weekly.tokens / (live.weekly.pct / 100));
+    }
+  }
+  p.live = true;
 }
 
 function updateTrayTitle(data) {

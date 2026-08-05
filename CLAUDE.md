@@ -24,6 +24,12 @@
    นี่คือจุดขายด้านความปลอดภัยของแอป อย่าเพิ่มฟีเจอร์ที่ทำลายข้อนี้
 2. **ห้ามส่งข้อมูลออกนอกเครื่อง** ไม่มี telemetry ไม่มี analytics ไม่มี cloud sync
    ถ้าจะเพิ่มฟีเจอร์ที่ต้องต่อเน็ต ต้องถามผู้ใช้ก่อนเสมอ
+
+   > **ข้อยกเว้นเดียวที่ผู้ใช้อนุมัติแล้ว (ส.ค. 2026):** ฟีเจอร์ `liveUsage` ใน `src/liveusage.js`
+   > เป็น opt-in (ปิดเป็นค่าเริ่มต้น) — อ่านเฉพาะ `accessToken` จาก `~/.claude/.credentials.json`
+   > แล้วเรียก `api.anthropic.com/api/oauth/usage` (endpoint เดียวกับคำสั่ง /usage ของ Claude Code)
+   > เพื่อดึง % โควตาทางการ ห้าม log/เก็บ/ส่ง token ไปที่อื่น และห้ามขยายขอบเขตนี้
+   > โดยไม่ถามผู้ใช้ใหม่
 3. **`contextIsolation: true` และ `nodeIntegration: false`** ห้ามปิด
    ทุกอย่างที่ renderer ต้องใช้ ให้ผ่าน `preload.js` เท่านั้น
 4. **ไม่พึ่งพา CDN หรือฟอนต์ออนไลน์** แอปต้องทำงานได้แม้ออฟไลน์
@@ -38,6 +44,7 @@ main.js          main process — หน้าต่าง, Tray, Notification, 
 preload.js       contextBridge เปิด window.api ให้ renderer (จุดเดียวที่ข้ามฝั่งได้)
 src/config.js    ค่าตั้งต้น + PLAN_PRESETS + โหลด/บันทึก config.json ใน userData
 src/usage.js     หัวใจ — เดินหาไฟล์ .jsonl, แกะ token, จัดบล็อก 5 ชม., คำนวณ %
+src/liveusage.js opt-in — ดึง % ทางการจาก API ของ Anthropic (ดูข้อยกเว้นในกฎข้อ 2)
 renderer/        UI ล้วน ไม่มี Node API
 ```
 
