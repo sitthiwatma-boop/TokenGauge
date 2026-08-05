@@ -9,7 +9,9 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --win",
-    "pack": "electron-builder --win portable"
+    "pack": "electron-builder --win portable",
+    "build:demo": "node scripts/build-demo.js",
+    "test": "node test/all.test.js"
   },
   "devDependencies": {
     "electron": "^33.2.0",

@@ -125,8 +125,14 @@ node -e "const u=require('./src/usage');const {PLAN_PRESETS}=require('./src/conf
 ```
 
 **ดูหน้าตา UI โดยไม่ต้องเปิด Electron** — เปิด `demo.html` ในเบราว์เซอร์
-ไฟล์นี้จำลอง `window.api` ไว้ให้แล้ว ถ้าแก้ `styles.css` หรือ `app.js`
-ต้องสร้าง demo.html ใหม่ด้วย ไม่งั้นจะไม่ตรงกัน
+ไฟล์นี้**สร้างอัตโนมัติ ห้ามแก้ด้วยมือ** — หลังแก้อะไรใน `renderer/` ให้รัน
+
+```powershell
+npm run build:demo
+```
+
+mock ของ `window.api` อยู่ที่ `scripts/demo-mock.js` (ส่วนเดียวที่แก้มือ —
+ถ้าเพิ่มเมธอดใหม่ใน preload.js ต้องเพิ่ม mock ที่นั่นด้วย)
 
 ---
 

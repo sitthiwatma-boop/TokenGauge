@@ -1,7 +1,12 @@
 <!doctype html>
 <html lang="th"><head><meta charset="utf-8">
 <title>TokenGauge — ตัวอย่างหน้าตา</title>
-<style>/* TokenGauge — instrument cluster theme
+<!--
+  ไฟล์นี้ถูกสร้างอัตโนมัติจาก renderer/ ด้วย `npm run build:demo`
+  ห้ามแก้ตรงนี้ — แก้ renderer/index.html, styles.css, app.js หรือ scripts/demo-mock.js แทน
+-->
+<style>
+/* TokenGauge — instrument cluster theme
    display : Bahnschrift (มากับ Windows 10+) สำหรับตัวเลขหน้าปัด
    body    : Segoe UI Variable / Leelawadee UI สำหรับภาษาไทย
    utility : Cascadia Mono สำหรับตัวนับเวลา                        */
@@ -406,8 +411,10 @@ body.mini .mascot { width: 24px; height: 24px; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
-</style></head>
-<body>
+
+</style>
+</head><body>
+
 
 <div class="titlebar">
   <div class="brand"><b>TOKENGAUGE</b><span>มาตรวัดโควตา AI</span></div>
@@ -477,9 +484,10 @@ body.mini .mascot { width: 24px; height: 24px; }
 
 <canvas id="tray-canvas" width="32" height="32" style="display:none"></canvas>
 
-
 <script>
-// ---- ตัวจำลองสำหรับดูหน้าตา ไม่ต้องติดตั้ง Electron ----
+// ---- ตัวจำลอง window.api สำหรับดู demo.html ในเบราว์เซอร์ ไม่ต้องติดตั้ง Electron ----
+// ไฟล์นี้คือส่วนเดียวของ demo ที่แก้ด้วยมือ — ถ้าเพิ่มเมธอดใหม่ใน preload.js ให้เพิ่ม mock ที่นี่ด้วย
+// แล้วรัน `npm run build:demo` เพื่อประกอบ demo.html ใหม่
 const rnd=(n,s)=>Array.from({length:24},(_,i)=>Math.round(Math.max(0,Math.sin(i/2.2+s)*n+n*0.7+Math.random()*n*0.5)));
 const now=Date.now();
 const MOCK={updatedAt:now,providers:[
@@ -515,8 +523,10 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
  sendTrayIcon:()=>{},
  setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},
  onUsage:cb=>{_cb=cb;setTimeout(()=>cb(MOCK),80);},onMiniMode:()=>{}};
+
 </script>
-<script>'use strict';
+<script>
+'use strict';
 
 /* เรขาคณิตของหน้าปัด: ส่วนโค้ง 220 องศา */
 const CX = 93, CY = 92, R = 70, A0 = 200, A1 = -20;
@@ -590,12 +600,14 @@ function mascotFace(mood, cy, gap = 3.5) {
 
 function mascotSvg(id, mood) {
   if (id === 'claude') {
+    // ประกายดาวสีส้ม
     return `<svg viewBox="0 0 36 36" aria-hidden="true">
       <path class="body" d="M18 2 C20.5 11 25 15.5 34 18 C25 20.5 20.5 25 18 34 C15.5 25 11 20.5 2 18 C11 15.5 15.5 11 18 2 Z"/>
       ${mascotFace(mood, 16.5)}
     </svg>`;
   }
   if (id === 'chatgpt') {
+    // ต้นกล้าสีเขียว
     return `<svg viewBox="0 0 36 36" aria-hidden="true">
       <path class="leaf" d="M18 8 C18 3.5 21.5 1.5 25 1.5 C25 6 21.5 8 18 8 Z"/>
       <path class="leaf l2" d="M18 8 C18 4.5 15 3 12 3 C12 6.5 15 8 18 8 Z"/>
@@ -603,6 +615,7 @@ function mascotSvg(id, mood) {
       ${mascotFace(mood, 20)}
     </svg>`;
   }
+  // grok — ยูเอฟโอสีม่วง
   return `<svg viewBox="0 0 36 36" aria-hidden="true">
     <line class="ant" x1="18" y1="7" x2="18" y2="4"/>
     <circle class="ant-tip" cx="18" cy="3" r="1.5"/>
@@ -960,5 +973,6 @@ window.api.onMiniMode((on) => {
 });
 
 boot();
+
 </script>
 </body></html>
