@@ -81,7 +81,7 @@ const DEFAULTS = {
   miniPos: null, // [x, y] ตำแหน่งวิดเจ็ตที่ผู้ใช้ลากไว้ล่าสุด (null = มุมขวาล่าง)
   muteUntil: 0, // ปิดเสียงเตือนชั่วคราวถึงเวลานี้ (ms)
   dailySummary: { enabled: true, hour: 21 }, // สรุปประจำวันเด้งแจ้งเตือน
-  theme: 'dark',
+  theme: 'system', // 'system' = ตามธีม Windows | 'dark' | 'light'
   providers: DEFAULT_PROVIDERS
 };
 

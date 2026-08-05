@@ -412,8 +412,18 @@ function renderSettings() {
     .join('');
 }
 
+/* ธีม: dark / light / ตามระบบ Windows (จำค่าที่เลือกไว้ใน config) */
+function applyTheme() {
+  const t = config?.theme || 'system';
+  const light = t === 'light' || (t === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches);
+  document.body.classList.toggle('light', light);
+}
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme);
+
 async function boot() {
   config = await window.api.getConfig();
+  applyTheme();
+  document.getElementById('s-theme').value = config.theme || 'system';
   document.getElementById('t-mini').checked = !!config.miniMode;
   document.body.classList.toggle('mini', !!config.miniMode);
   document.getElementById('t-taskbar').checked = config.showInTaskbar;
@@ -536,6 +546,10 @@ document.getElementById('s-opacity').oninput = (e) => {
 };
 document.getElementById('t-daily').onchange = saveDailySummary;
 document.getElementById('s-daily-hour').onchange = saveDailySummary;
+document.getElementById('s-theme').onchange = async (e) => {
+  await setCfg({ theme: e.target.value });
+  applyTheme();
+};
 
 document.addEventListener('change', async (e) => {
   const group = e.target.closest('.pgroup');

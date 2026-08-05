@@ -30,6 +30,20 @@
   --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
 }
 
+/* ธีมสว่าง — ทับเฉพาะตัวแปร โครงสร้างอื่นใช้ร่วมกัน */
+body.light {
+  --bg: #eef1f6;
+  --bg-2: #e4e9f1;
+  --panel: #ffffff;
+  --panel-2: #edf0f6;
+  --line: rgba(20, 30, 50, 0.08);
+  --line-strong: rgba(20, 30, 50, 0.18);
+  --text: #1d2534;
+  --muted: #56657d;
+  --dim: #8592a6;
+  --track: #dfe5ee;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -351,7 +365,7 @@ body.mini .live-dot { display: none; }
   border-top: 1px solid var(--line);
   display: flex; align-items: center; gap: 10px;
   padding: 0 18px;
-  background: rgba(11, 14, 19, 0.7);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
   backdrop-filter: blur(8px);
 }
 .toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
@@ -377,7 +391,7 @@ body.mini .live-dot { display: none; }
   font-family: var(--font-body); font-size: 12.5px; cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
-.btn:hover { border-color: var(--line-strong); background: #222c3c; }
+.btn:hover { border-color: var(--line-strong); background: color-mix(in srgb, var(--panel-2) 88%, var(--text) 8%); }
 .btn.primary { background: #2f6fd0; border-color: #2f6fd0; }
 .btn.primary:hover { background: #3a7de0; }
 .spacer { margin-left: auto; }
@@ -422,7 +436,7 @@ body.mini .live-dot { display: none; }
 .cal-note .cal-clear { padding: 2px 8px; font-size: 10.5px; margin-left: 4px; }
 
 ::-webkit-scrollbar { width: 9px; }
-::-webkit-scrollbar-thumb { background: #263042; border-radius: 9px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--track); border-radius: 9px; border: 2px solid var(--bg); }
 
 /* ---------- โหมดมินิ ---------- */
 /* โหมดมินิ = กรอบการ์ด 3 ใบล้วน ๆ ไม่มีแถบหัว ลากย้ายด้วยการจับพื้นที่การ์ด */
@@ -432,7 +446,7 @@ body.mini main { padding: 8px 10px; height: 100%; overflow: hidden; -webkit-app-
 body.mini #mini-restore {
   display: block; position: fixed; top: 5px; right: 5px; z-index: 30;
   width: 22px; height: 22px; border-radius: 7px;
-  border: 1px solid var(--line-strong); background: rgba(15, 20, 28, 0.88);
+  border: 1px solid var(--line-strong); background: color-mix(in srgb, var(--panel) 90%, transparent);
   color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
   /* ต้องแสดงตลอด — hover ใช้ไม่ได้เพราะ drag region กินเหตุการณ์เมาส์ */
   opacity: 0.55; transition: opacity 0.15s;
@@ -549,6 +563,14 @@ body.mini .mascot { width: 24px; height: 24px; }
       <select id="s-weekly">
         <option value="rolling">ย้อนหลัง 7 วัน</option>
         <option value="calendar">ตั้งแต่วันจันทร์</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>ธีม</label>
+      <select id="s-theme">
+        <option value="system">ตามระบบ Windows</option>
+        <option value="dark">มืด</option>
+        <option value="light">สว่าง</option>
       </select>
     </div>
     <div class="field">
@@ -1036,8 +1058,18 @@ function renderSettings() {
     .join('');
 }
 
+/* ธีม: dark / light / ตามระบบ Windows (จำค่าที่เลือกไว้ใน config) */
+function applyTheme() {
+  const t = config?.theme || 'system';
+  const light = t === 'light' || (t === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches);
+  document.body.classList.toggle('light', light);
+}
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', applyTheme);
+
 async function boot() {
   config = await window.api.getConfig();
+  applyTheme();
+  document.getElementById('s-theme').value = config.theme || 'system';
   document.getElementById('t-mini').checked = !!config.miniMode;
   document.body.classList.toggle('mini', !!config.miniMode);
   document.getElementById('t-taskbar').checked = config.showInTaskbar;
@@ -1160,6 +1192,10 @@ document.getElementById('s-opacity').oninput = (e) => {
 };
 document.getElementById('t-daily').onchange = saveDailySummary;
 document.getElementById('s-daily-hour').onchange = saveDailySummary;
+document.getElementById('s-theme').onchange = async (e) => {
+  await setCfg({ theme: e.target.value });
+  applyTheme();
+};
 
 document.addEventListener('change', async (e) => {
   const group = e.target.closest('.pgroup');
