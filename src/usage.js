@@ -248,19 +248,20 @@ function computeProvider(provider, presets, opts = {}) {
   const blocks = buildBlocks(events, w);
   const active = blocks.find((b) => now >= b.start && now < b.end) || null;
 
-  // ลิมิต: ใช้ค่าตามแพลน หรือคำนวณ P90 จากบล็อกที่ผ่านมา
+  // ลิมิต: ค่าที่ผู้ใช้ปรับเทียบเองชนะทุกอย่าง > ค่าตามแพลน > P90 จากบล็อกที่ผ่านมา
+  const cal = provider.calibration || {};
   const preset = presets[provider.plan] || presets.auto;
   const past = blocks.filter((b) => b !== active).map((b) => b.tokens);
   // ต้องมีบล็อกที่จบแล้วอย่างน้อย 3 บล็อก ค่า P90 จึงจะเชื่อถือได้
-  const estimating = !preset.session && past.length < 3;
+  const estimating = !cal.session && !preset.session && past.length < 3;
   const autoSession = estimating
     ? Math.max(50000, (active ? active.tokens : 0) * 2)
     : percentile(past, 90) || 50000;
-  const sessionLimit = preset.session || Math.round(autoSession);
+  const sessionLimit = cal.session || preset.session || Math.round(autoSession);
 
   const weekFrom = opts.weeklyMode === 'calendar' ? startOfWeek(now) : now - 7 * 24 * 3600 * 1000;
   const weeklyTokens = events.filter((e) => e.ts >= weekFrom).reduce((s, e) => s + weighted(e, w), 0);
-  const weeklyLimit = preset.weekly || Math.max(Math.round(autoSession * 12), 1);
+  const weeklyLimit = cal.weekly || preset.weekly || Math.max(Math.round(autoSession * 12), 1);
 
   const sessionTokens = active ? active.tokens : 0;
   const sessionPct = Math.min(999, (sessionTokens / sessionLimit) * 100);
@@ -281,6 +282,7 @@ function computeProvider(provider, presets, opts = {}) {
     ok: true,
     state: 'ok',
     estimating,
+    calibrated: !!(cal.session || cal.weekly),
     session: {
       tokens: Math.round(sessionTokens),
       limit: sessionLimit,

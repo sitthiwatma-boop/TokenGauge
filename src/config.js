@@ -22,7 +22,8 @@ const DEFAULT_PROVIDERS = {
     roots: [path.join(HOME, '.claude', 'projects')],
     aggregation: 'sum',
     cacheReadWeight: 0.1,
-    plan: 'max20',
+    plan: 'max5',
+    calibration: null, // { session, weekly, at } — ลิมิตจริงที่ผู้ใช้ปรับเทียบเอง มีค่าแล้วจะชนะ preset
     windows: { session: true, weekly: true }
   },
   chatgpt: {
@@ -35,6 +36,7 @@ const DEFAULT_PROVIDERS = {
     aggregation: 'cumulative-max',
     cacheReadWeight: 0.1,
     plan: 'auto',
+    calibration: null,
     windows: { session: true, weekly: true }
   },
   grok: {
@@ -51,6 +53,7 @@ const DEFAULT_PROVIDERS = {
     aggregation: 'sum',
     cacheReadWeight: 0.1,
     plan: 'auto',
+    calibration: null,
     windows: { session: true, weekly: true }
   }
 };

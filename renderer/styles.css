@@ -289,6 +289,11 @@ main {
 .pgroup h3 b { width: 8px; height: 8px; border-radius: 50%; }
 .path-row { display: flex; gap: 6px; }
 .path-row .btn { padding: 8px 11px; font-size: 11.5px; white-space: nowrap; }
+.cal-row { display: flex; gap: 6px; }
+.cal-row input { flex: 1; min-width: 0; }
+.cal-row .btn { padding: 8px 11px; font-size: 11.5px; white-space: nowrap; }
+.cal-note { color: var(--dim); font-size: 11.5px; line-height: 1.6; margin: 6px 0 0; }
+.cal-note .cal-clear { padding: 2px 8px; font-size: 10.5px; margin-left: 4px; }
 
 ::-webkit-scrollbar { width: 9px; }
 ::-webkit-scrollbar-thumb { background: #263042; border-radius: 9px; border: 2px solid var(--bg); }

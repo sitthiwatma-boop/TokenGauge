@@ -176,6 +176,33 @@ ipcMain.handle('set-provider', (_e, { id, patch }) => {
 
 ipcMain.handle('refresh', () => (pushUsage(), true));
 
+// ปรับเทียบลิมิตกับ % จริงจากหน้า usage ของผู้ให้บริการ
+// ผู้ใช้กรอก % ที่เห็นจริง แล้วคำนวณลิมิตย้อนกลับ: limit = tokens ÷ (pct/100)
+ipcMain.handle('calibrate', (_e, { id, sessionPct, weeklyPct }) => {
+  const p = config.providers[id];
+  if (!p) return { ok: false, message: 'ไม่พบผู้ให้บริการ' };
+
+  const r = usage.computeProvider(p, cfgStore.PLAN_PRESETS, { weeklyMode: config.weeklyMode });
+  if (!r.ok) return { ok: false, message: 'ยังไม่มีข้อมูลการใช้งาน ปรับเทียบไม่ได้' };
+
+  const cal = { ...(p.calibration || {}) };
+  if (sessionPct > 0) {
+    if (r.session.tokens <= 0) return { ok: false, message: 'บล็อกปัจจุบันยังไม่มีการใช้งาน — ใช้งานสักครู่แล้วค่อยปรับเทียบ' };
+    cal.session = Math.round(r.session.tokens / (sessionPct / 100));
+  }
+  if (weeklyPct > 0) {
+    if (r.weekly.tokens <= 0) return { ok: false, message: 'สัปดาห์นี้ยังไม่มีการใช้งาน — ปรับเทียบรายสัปดาห์ไม่ได้' };
+    cal.weekly = Math.round(r.weekly.tokens / (weeklyPct / 100));
+  }
+  if (!cal.session && !cal.weekly) return { ok: false, message: 'กรอก % อย่างน้อยหนึ่งช่อง (1–100)' };
+  cal.at = Date.now();
+
+  config.providers[id] = { ...p, calibration: cal };
+  cfgStore.save(app, config);
+  pushUsage();
+  return { ok: true, calibration: cal, config };
+});
+
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return r.canceled ? null : r.filePaths[0];

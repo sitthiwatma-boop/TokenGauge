@@ -84,7 +84,7 @@ function cardHtml(p) {
     <div class="card-head">
       <div class="mark">${monogram}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
-      <button class="pill" data-act="plan">${p.planLabel}</button>
+      <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
     </div>
 
     <div class="gauge">
@@ -173,6 +173,17 @@ const PLANS = [
   ['plus', 'Plus']
 ];
 
+function calNoteHtml(p) {
+  const c = p.calibration;
+  if (c && (c.session || c.weekly)) {
+    const parts = [];
+    if (c.session) parts.push(`บล็อก ≈ ${fmtTokens(c.session)}`);
+    if (c.weekly) parts.push(`สัปดาห์ ≈ ${fmtTokens(c.weekly)}`);
+    return `ลิมิตที่ปรับเทียบแล้ว: ${parts.join(' · ')} <button class="btn cal-clear" data-act="cal-clear">ล้างค่า</button>`;
+  }
+  return 'เปิดหน้า usage ของผู้ให้บริการ แล้วกรอก % ที่เห็นจริง — แอปจะคำนวณลิมิตจริงย้อนกลับให้';
+}
+
 function renderSettings() {
   const box = document.getElementById('prov-settings');
   box.innerHTML = Object.values(config.providers)
@@ -190,6 +201,15 @@ function renderSettings() {
           <input type="text" data-f="root" value="${(p.roots[0] || '').replace(/"/g, '&quot;')}">
           <button class="btn" data-act="pick">เลือก…</button>
         </div>
+      </div>
+      <div class="field">
+        <label>ปรับเทียบกับ % จริง</label>
+        <div class="cal-row">
+          <input type="number" data-f="cal-session" placeholder="% บล็อกปัจจุบัน" min="0.1" max="100" step="0.1">
+          <input type="number" data-f="cal-weekly" placeholder="% รายสัปดาห์" min="0.1" max="100" step="0.1">
+          <button class="btn" data-act="calibrate">ปรับเทียบ</button>
+        </div>
+        <p class="cal-note" data-role="cal-note">${calNoteHtml(p)}</p>
       </div>
       <label class="toggle"><input type="checkbox" data-f="enabled" ${p.enabled ? 'checked' : ''}><i class="sw"></i>เปิดใช้งานการ์ดนี้</label>
     </div>`
@@ -230,6 +250,30 @@ document.addEventListener('click', async (e) => {
       group.querySelector('[data-f=root]').value = dir;
       config = await window.api.setProvider(group.dataset.id, { roots: [dir] });
     }
+  }
+
+  if (act === 'calibrate') {
+    const group = e.target.closest('.pgroup');
+    const sPct = parseFloat(group.querySelector('[data-f=cal-session]').value) || 0;
+    const wPct = parseFloat(group.querySelector('[data-f=cal-weekly]').value) || 0;
+    const note = group.querySelector('[data-role=cal-note]');
+    if (sPct <= 0 && wPct <= 0) {
+      note.textContent = 'กรอก % อย่างน้อยหนึ่งช่อง (เช่น 14 ถ้าหน้า usage บอก 14%)';
+      return;
+    }
+    const res = await window.api.calibrate(group.dataset.id, { sessionPct: sPct, weeklyPct: wPct });
+    if (res.ok) {
+      config = res.config;
+      renderSettings();
+    } else {
+      note.textContent = res.message;
+    }
+  }
+
+  if (act === 'cal-clear') {
+    const group = e.target.closest('.pgroup');
+    config = await window.api.setProvider(group.dataset.id, { calibration: null });
+    renderSettings();
   }
 });
 
