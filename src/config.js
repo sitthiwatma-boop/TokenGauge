@@ -83,6 +83,7 @@ const DEFAULTS = {
   miniMode: false, // วิดเจ็ตเล็กมุมขวาล่าง (จำสถานะข้ามการเปิดแอป)
   miniOpacity: 1, // ความทึบของวิดเจ็ต 0.4–1 ปรับจากเมนู tray
   miniPos: null, // [x, y] ตำแหน่งวิดเจ็ตที่ผู้ใช้ลากไว้ล่าสุด (null = มุมขวาล่าง)
+  miniSize: null, // [w, h] ขนาดวิดเจ็ตที่ผู้ใช้ลากปรับไว้ (null = 380x168)
   muteUntil: 0, // ปิดเสียงเตือนชั่วคราวถึงเวลานี้ (ms)
   autoUpdate: true, // เช็คเวอร์ชันใหม่จาก GitHub Releases (เฉพาะตัวที่แพ็กแล้ว ปิดได้)
   dailySummary: { enabled: true, hour: 21 }, // สรุปประจำวันเด้งแจ้งเตือน

@@ -1088,6 +1088,7 @@ async function boot() {
   document.getElementById('s-theme').value = config.theme || 'system';
   document.getElementById('t-mini').checked = !!config.miniMode;
   document.body.classList.toggle('mini', !!config.miniMode);
+  fitMini();
   document.getElementById('t-taskbar').checked = config.showInTaskbar;
   document.getElementById('t-top').checked = config.alwaysOnTop;
   document.getElementById('t-boot').checked = config.startWithWindows;
@@ -1229,10 +1230,22 @@ window.api.onUsage((d) => {
   render();
   if (curView === 'history') openHistory(); // กราฟตามข้อมูลใหม่ทุกรอบรีเฟรช
 });
+/* วิดเจ็ตย่อ/ขยายได้ — สเกลเนื้อหาตามขนาดหน้าต่างเทียบกับขนาดตั้งต้น 380x168 */
+function fitMini() {
+  if (!document.body.classList.contains('mini')) {
+    document.body.style.zoom = '';
+    return;
+  }
+  const z = Math.min(window.innerWidth / 380, window.innerHeight / 168);
+  document.body.style.zoom = String(Math.max(0.55, z));
+}
+window.addEventListener('resize', fitMini);
+
 window.api.onMiniMode((on) => {
   document.body.classList.toggle('mini', on);
   document.getElementById('t-mini').checked = on;
   if (on) switchView('grid'); // โหมดมินิแสดงเฉพาะการ์ด
+  fitMini();
 });
 
 boot();

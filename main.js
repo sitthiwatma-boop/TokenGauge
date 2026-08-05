@@ -49,10 +49,16 @@ function createWindow() {
   });
   win.on('closed', () => (win = null));
 
-  // จำตำแหน่งวิดเจ็ตที่ผู้ใช้ลากไว้ (บันทึกแบบหน่วง กันเขียนไฟล์รัวระหว่างลาก)
+  // จำตำแหน่ง/ขนาดวิดเจ็ตที่ผู้ใช้ปรับไว้ (บันทึกแบบหน่วง กันเขียนไฟล์รัวระหว่างลาก)
   win.on('moved', () => {
     if (!miniMode || !win) return;
     config.miniPos = win.getPosition();
+    clearTimeout(miniPosTimer);
+    miniPosTimer = setTimeout(() => cfgStore.save(app, config), 1000);
+  });
+  win.on('resized', () => {
+    if (!miniMode || !win) return;
+    config.miniSize = win.getSize();
     clearTimeout(miniPosTimer);
     miniPosTimer = setTimeout(() => cfgStore.save(app, config), 1000);
   });
@@ -143,19 +149,22 @@ function setMini(on) {
   miniMode = on;
   if (!win) return;
   if (on) {
-    win.setResizable(false);
     win.setAlwaysOnTop(true, 'screen-saver');
     // ต้องปลดขนาดขั้นต่ำก่อน ไม่งั้น setSize โดนดีดกลับไป 720x520
-    win.setMinimumSize(1, 1);
-    win.setSize(MINI_W, MINI_H);
+    win.setMinimumSize(240, 110);
+    win.setResizable(true); // ลากมุมย่อ/ขยายวิดเจ็ตได้ เนื้อหาสเกลตามใน renderer
+    const size = Array.isArray(config.miniSize) && config.miniSize[0] >= 240 ? config.miniSize : [MINI_W, MINI_H];
+    win.setSize(size[0], size[1]);
+    if (win.setAspectRatio) win.setAspectRatio(MINI_W / MINI_H); // ล็อกสัดส่วนตอนลาก
     // ใช้ตำแหน่งที่ผู้ใช้ลากไว้ล่าสุด ถ้ายังอยู่ในจอ — ไม่งั้นเกาะมุมขวาล่างเหนือ taskbar
     const wa = screen.getPrimaryDisplay().workArea;
-    const fallback = [wa.x + wa.width - MINI_W - MINI_GAP, wa.y + wa.height - MINI_H - MINI_GAP];
+    const fallback = [wa.x + wa.width - size[0] - MINI_GAP, wa.y + wa.height - size[1] - MINI_GAP];
     const pos = posOnScreen(config.miniPos) ? config.miniPos : fallback;
     win.setPosition(pos[0], pos[1]);
     win.setOpacity(Number(config.miniOpacity) || 1);
     win.show();
   } else {
+    if (win.setAspectRatio) win.setAspectRatio(0);
     win.setResizable(true);
     win.setAlwaysOnTop(!!config.alwaysOnTop);
     win.setMinimumSize(720, 520);
