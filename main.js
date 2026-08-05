@@ -81,7 +81,7 @@ function rebuildTrayMenu() {
   );
 }
 
-const MINI_W = 380, MINI_H = 205, MINI_GAP = 12;
+const MINI_W = 380, MINI_H = 168, MINI_GAP = 12;
 
 function setMini(on) {
   miniMode = on;

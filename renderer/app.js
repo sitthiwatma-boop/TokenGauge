@@ -355,6 +355,7 @@ document.getElementById('w-min').onclick = () => window.api.window('minimize');
 document.getElementById('w-max').onclick = () => window.api.window('maximize');
 document.getElementById('w-close').onclick = () => window.api.window('close');
 document.getElementById('w-mini').onclick = () => window.api.window('mini');
+document.getElementById('mini-restore').onclick = () => window.api.window('mini');
 
 const setCfg = async (patch) => (config = await window.api.setConfig(patch));
 document.getElementById('t-mini').onchange = (e) => window.api.setMini(e.target.checked);

@@ -373,7 +373,20 @@ body.mini .live-dot { display: none; }
 ::-webkit-scrollbar-thumb { background: #263042; border-radius: 9px; border: 2px solid var(--bg); }
 
 /* ---------- โหมดมินิ ---------- */
-body.mini main { padding: 8px 10px; height: calc(100% - 44px); overflow: hidden; }
+/* โหมดมินิ = กรอบการ์ด 3 ใบล้วน ๆ ไม่มีแถบหัว ลากย้ายด้วยการจับพื้นที่การ์ด */
+body.mini .titlebar { display: none; }
+body.mini main { padding: 8px 10px; height: 100%; overflow: hidden; -webkit-app-region: drag; }
+#mini-restore { display: none; }
+body.mini #mini-restore {
+  display: block; position: fixed; top: 5px; right: 5px; z-index: 30;
+  width: 22px; height: 22px; border-radius: 7px;
+  border: 1px solid var(--line-strong); background: rgba(15, 20, 28, 0.88);
+  color: var(--muted); font-size: 12px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity 0.15s;
+  -webkit-app-region: no-drag;
+}
+body.mini:hover #mini-restore { opacity: 1; }
+#mini-restore:hover { color: var(--text); border-color: #2f6fd0; }
 body.mini .head, body.mini .bottom, body.mini .gauge, body.mini .spark, body.mini .rows, body.mini .foot .k { display: none; }
 body.mini .grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 body.mini .card { padding: 8px 10px 6px; }
@@ -453,6 +466,8 @@ body.mini .mascot { width: 24px; height: 24px; }
   </div>
 </div>
 
+<button id="mini-restore" title="กลับขนาดปกติ">⤢</button>
+
 <canvas id="tray-canvas" width="32" height="32" style="display:none"></canvas>
 
 
@@ -488,7 +503,9 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
   if(cal.weekly){m.weekly.limit=cal.weekly;m.weekly.pct=100*m.weekly.tokens/cal.weekly;}
   _cb&&_cb(MOCK);return{ok:true,calibration:cal,config:CFG};},
  refresh:async()=>{MOCK.updatedAt=Date.now();_cb&&_cb(MOCK);},
- pickFolder:async()=>null,exportCsv:async()=>null,window:()=>{},sendTrayIcon:()=>{},
+ pickFolder:async()=>null,exportCsv:async()=>null,
+ window:(a)=>{if(a==='mini')window.api.setMini(!document.body.classList.contains('mini'));},
+ sendTrayIcon:()=>{},
  setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},
  onUsage:cb=>{_cb=cb;setTimeout(()=>cb(MOCK),80);},onMiniMode:()=>{}};
 </script>
@@ -846,6 +863,7 @@ document.getElementById('w-min').onclick = () => window.api.window('minimize');
 document.getElementById('w-max').onclick = () => window.api.window('maximize');
 document.getElementById('w-close').onclick = () => window.api.window('close');
 document.getElementById('w-mini').onclick = () => window.api.window('mini');
+document.getElementById('mini-restore').onclick = () => window.api.window('mini');
 
 const setCfg = async (patch) => (config = await window.api.setConfig(patch));
 document.getElementById('t-mini').onchange = (e) => window.api.setMini(e.target.checked);
