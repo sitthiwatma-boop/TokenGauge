@@ -113,19 +113,24 @@ main {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
+  /* 3 การ์ดเรียงแถวเดียวเสมอ ไม่ตกบรรทัด */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 /* ---------- provider card ---------- */
 .card {
-  background: linear-gradient(180deg, var(--panel), var(--bg-2));
-  border: 1px solid var(--line);
+  /* ย้อมโทนสีของผู้ให้บริการลงพื้นการ์ด ให้สามใบต่างกันชัด */
+  background:
+    radial-gradient(130% 80% at 50% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 58%),
+    linear-gradient(180deg, var(--panel), var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
   border-radius: var(--radius);
   padding: 18px;
   position: relative;
   overflow: hidden;
   animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  box-shadow: 0 10px 26px -16px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .card::after {
   /* เส้นแสงบางบนขอบบน สีตามผู้ให้บริการ */
@@ -151,13 +156,48 @@ main {
 }
 .card-head .n { font-weight: 600; font-size: 15px; }
 .card-head .s { color: var(--dim); font-size: 11.5px; }
+
+/* ---------- มาสคอตประจำ AI ---------- */
+.mascot { width: 46px; height: 46px; flex: none; }
+.mascot svg { width: 100%; height: 100%; overflow: visible; animation: bob 3.8s ease-in-out infinite; }
+.card:nth-child(2) .mascot svg { animation-delay: 0.7s; }
+.card:nth-child(3) .mascot svg { animation-delay: 1.4s; }
+.mascot.sad svg { animation: shiver 0.45s ease-in-out infinite; }
+.mascot .body { fill: color-mix(in srgb, var(--accent) 82%, #fff); }
+.mascot .eye {
+  fill: #101520;
+  animation: blink 4.6s infinite;
+  transform-box: fill-box; transform-origin: center;
+}
+.card:nth-child(2) .mascot .eye { animation-delay: 1.5s; }
+.card:nth-child(3) .mascot .eye { animation-delay: 3s; }
+.mascot .eyelid, .mascot .mouth { stroke: #101520; stroke-width: 1.4; stroke-linecap: round; fill: none; }
+.mascot .cheek { fill: #fff; opacity: 0.3; }
+.mascot .sweat { fill: #7cc4ff; }
+.mascot .leaf { fill: color-mix(in srgb, var(--accent) 55%, #fff); }
+.mascot .leaf.l2 { fill: color-mix(in srgb, var(--accent) 80%, #063b26); }
+.mascot .saucer {
+  fill: color-mix(in srgb, var(--accent) 38%, var(--panel));
+  stroke: color-mix(in srgb, var(--accent) 60%, transparent); stroke-width: 1;
+}
+.mascot .ant { stroke: color-mix(in srgb, var(--accent) 70%, #fff); stroke-width: 1.2; stroke-linecap: round; }
+.mascot .ant-tip { fill: #ffd66b; animation: glowtip 2.2s ease-in-out infinite; }
+.mascot .lamp { fill: #fff; opacity: 0.85; animation: twinkle 1.6s infinite; }
+.mascot .lamp.l2 { animation-delay: 0.5s; }
+.mascot .lamp.l3 { animation-delay: 1s; }
+@keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
+@keyframes shiver { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 75% { transform: translateX(1px); } }
+@keyframes blink { 0%, 91%, 100% { transform: scaleY(1); } 94%, 96% { transform: scaleY(0.12); } }
+@keyframes twinkle { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.25; } }
+@keyframes glowtip { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .pill {
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: 10.5px; letter-spacing: 0.04em;
   padding: 4px 9px; border-radius: 999px;
-  color: var(--muted);
-  border: 1px solid var(--line-strong);
+  color: color-mix(in srgb, var(--accent) 55%, var(--muted));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line-strong));
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
   cursor: pointer;
 }
 .pill:hover { color: var(--text); border-color: var(--accent); }
@@ -193,6 +233,7 @@ body.mini .live-dot { display: none; }
   font-family: var(--font-display);
   font-weight: 600; font-size: 40px; line-height: 1;
   font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--accent) 60%, #fff);
 }
 .gauge-val b i { font-size: 18px; font-style: normal; color: var(--muted); margin-left: 2px; }
 .gauge-val span { display: block; color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; margin-top: 5px; }
@@ -322,6 +363,7 @@ body.mini .card { padding: 10px; }
 body.mini .card-head { margin-bottom: 8px; }
 body.mini .pill, body.mini .card-head .s { display: none; }
 body.mini .mark { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
+body.mini .mascot { width: 24px; height: 24px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
@@ -402,13 +444,13 @@ const MOCK={updatedAt:now,providers:[
  {id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',plan:'plus',planLabel:'Plus',ok:true,state:'ok',
   session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3},weekly:{tokens:388000,limit:720000,pct:54},
   burnPerHour:28800,etaMs:32*60e3,spark:rnd(14000,2)},
- {id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#9AA6FF',state:'unconfigured',
+ {id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#A78BFA',state:'unconfigured',
   message:'ยังไม่พบโฟลเดอร์ log — ตั้ง path ได้ในหน้าตั้งค่า'}
 ]};
 const CFG={refreshSeconds:60,alertThreshold:90,showInTaskbar:true,alwaysOnTop:false,startWithWindows:false,weeklyMode:'rolling',
  providers:{claude:{id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',enabled:true,plan:'max5',liveUsage:true,calibration:{session:993000,weekly:22500000,at:now},roots:['C:\\Users\\you\\.claude\\projects']},
  chatgpt:{id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',enabled:true,plan:'plus',roots:['C:\\Users\\you\\.codex\\sessions']},
- grok:{id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#9AA6FF',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.grok']}}};
+ grok:{id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#A78BFA',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.grok']}}};
 let _cb=null;
 window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
  setProvider:async(id,p)=>{Object.assign(CFG.providers[id],p);const m=MOCK.providers.find(x=>x.id===id);if(m&&p.plan){m.plan=p.plan;m.planLabel={auto:'อัตโนมัติ (P90)',pro:'Pro',max5:'Max 5x',max20:'Max 20x',plus:'Plus'}[p.plan];_cb&&_cb(MOCK);}if(m&&('calibration' in p)&&!p.calibration){m.calibrated=false;_cb&&_cb(MOCK);}if(m&&('liveUsage' in p)){m.live=!!p.liveUsage;_cb&&_cb(MOCK);}return CFG;},
@@ -475,15 +517,58 @@ function ticks() {
   return s;
 }
 
+/* ---------- มาสคอตประจำผู้ให้บริการ (SVG วาดเอง ไม่พึ่ง asset ภายนอก) ---------- */
+function mascotFace(mood, cy, gap = 3.5) {
+  const exL = 18 - gap, exR = 18 + gap;
+  const eyes = mood === 'sleep'
+    ? `<path class="eyelid" d="M${exL - 1.6} ${cy} q1.6 1.8 3.2 0"/><path class="eyelid" d="M${exR - 1.6} ${cy} q1.6 1.8 3.2 0"/>`
+    : `<circle class="eye" cx="${exL}" cy="${cy}" r="1.6"/><circle class="eye" cx="${exR}" cy="${cy}" r="1.6"/>`;
+  const my = cy + 4;
+  const mouth = mood === 'sad'
+    ? `<path class="mouth" d="M${18 - 2.8} ${my + 1} Q18 ${my - 1.8} ${18 + 2.8} ${my + 1}"/>`
+    : mood === 'worry'
+    ? `<path class="mouth" d="M${18 - 2.6} ${my} L${18 + 2.6} ${my}"/>`
+    : `<path class="mouth" d="M${18 - 2.8} ${my - 0.6} Q18 ${my + 2} ${18 + 2.8} ${my - 0.6}"/>`;
+  const cheeks = `<circle class="cheek" cx="${exL - 3.4}" cy="${cy + 3}" r="1.5"/><circle class="cheek" cx="${exR + 3.4}" cy="${cy + 3}" r="1.5"/>`;
+  const sweat = mood === 'sad' ? `<path class="sweat" d="M28.5 ${cy - 6} q2.4 3.4 0 4.8 q-2.4 -1.4 0 -4.8"/>` : '';
+  return eyes + mouth + cheeks + sweat;
+}
+
+function mascotSvg(id, mood) {
+  if (id === 'claude') {
+    return `<svg viewBox="0 0 36 36" aria-hidden="true">
+      <path class="body" d="M18 2 C20.5 11 25 15.5 34 18 C25 20.5 20.5 25 18 34 C15.5 25 11 20.5 2 18 C11 15.5 15.5 11 18 2 Z"/>
+      ${mascotFace(mood, 16.5)}
+    </svg>`;
+  }
+  if (id === 'chatgpt') {
+    return `<svg viewBox="0 0 36 36" aria-hidden="true">
+      <path class="leaf" d="M18 8 C18 3.5 21.5 1.5 25 1.5 C25 6 21.5 8 18 8 Z"/>
+      <path class="leaf l2" d="M18 8 C18 4.5 15 3 12 3 C12 6.5 15 8 18 8 Z"/>
+      <circle class="body" cx="18" cy="21.5" r="12.5"/>
+      ${mascotFace(mood, 20)}
+    </svg>`;
+  }
+  return `<svg viewBox="0 0 36 36" aria-hidden="true">
+    <line class="ant" x1="18" y1="7" x2="18" y2="4"/>
+    <circle class="ant-tip" cx="18" cy="3" r="1.5"/>
+    <circle class="body" cx="18" cy="16" r="8.5"/>
+    ${mascotFace(mood, 14.5, 3)}
+    <ellipse class="saucer" cx="18" cy="25" rx="14.5" ry="5"/>
+    <circle class="lamp" cx="7.5" cy="24.5" r="1.2"/>
+    <circle class="lamp l2" cx="18" cy="27" r="1.2"/>
+    <circle class="lamp l3" cx="28.5" cy="24.5" r="1.2"/>
+  </svg>`;
+}
+
 function cardHtml(p) {
   const accent = p.accent || '#8ea2c0';
-  const monogram = (p.name || '?')[0];
   if (p.state !== 'ok') {
     const msg = p.message || 'ไม่พบข้อมูล';
     return `
     <section class="card" style="--accent:${accent}" data-id="${p.id}">
       <div class="card-head">
-        <div class="mark">${monogram}</div>
+        <div class="mascot m-${p.id}">${mascotSvg(p.id, 'sleep')}</div>
         <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
       </div>
       <div class="empty">
@@ -507,10 +592,11 @@ function cardHtml(p) {
     ? `เต็มใน ~${fmtCountdown(p.etaMs)}`
     : 'อัตราคงที่';
 
+  const mood = pct >= 90 ? 'sad' : pct >= 70 ? 'worry' : 'happy';
   return `
   <section class="card" style="--accent:${accent}" data-id="${p.id}">
     <div class="card-head">
-      <div class="mark">${monogram}</div>
+      <div class="mascot m-${p.id} ${mood}">${mascotSvg(p.id, mood)}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
       ${p.live ? '<span class="live-dot" title="% ทางการจาก claude.ai โดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : ''}
       <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>

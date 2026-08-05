@@ -44,7 +44,7 @@ const DEFAULT_PROVIDERS = {
     id: 'grok',
     name: 'Grok',
     subtitle: 'Grok CLI',
-    accent: '#9AA6FF',
+    accent: '#A78BFA',
     enabled: true,
     roots: [
       path.join(HOME, '.grok', 'history'),

@@ -47,15 +47,61 @@ function ticks() {
   return s;
 }
 
+/* ---------- มาสคอตประจำผู้ให้บริการ (SVG วาดเอง ไม่พึ่ง asset ภายนอก) ---------- */
+function mascotFace(mood, cy, gap = 3.5) {
+  const exL = 18 - gap, exR = 18 + gap;
+  const eyes = mood === 'sleep'
+    ? `<path class="eyelid" d="M${exL - 1.6} ${cy} q1.6 1.8 3.2 0"/><path class="eyelid" d="M${exR - 1.6} ${cy} q1.6 1.8 3.2 0"/>`
+    : `<circle class="eye" cx="${exL}" cy="${cy}" r="1.6"/><circle class="eye" cx="${exR}" cy="${cy}" r="1.6"/>`;
+  const my = cy + 4;
+  const mouth = mood === 'sad'
+    ? `<path class="mouth" d="M${18 - 2.8} ${my + 1} Q18 ${my - 1.8} ${18 + 2.8} ${my + 1}"/>`
+    : mood === 'worry'
+    ? `<path class="mouth" d="M${18 - 2.6} ${my} L${18 + 2.6} ${my}"/>`
+    : `<path class="mouth" d="M${18 - 2.8} ${my - 0.6} Q18 ${my + 2} ${18 + 2.8} ${my - 0.6}"/>`;
+  const cheeks = `<circle class="cheek" cx="${exL - 3.4}" cy="${cy + 3}" r="1.5"/><circle class="cheek" cx="${exR + 3.4}" cy="${cy + 3}" r="1.5"/>`;
+  const sweat = mood === 'sad' ? `<path class="sweat" d="M28.5 ${cy - 6} q2.4 3.4 0 4.8 q-2.4 -1.4 0 -4.8"/>` : '';
+  return eyes + mouth + cheeks + sweat;
+}
+
+function mascotSvg(id, mood) {
+  if (id === 'claude') {
+    // ประกายดาวสีส้ม
+    return `<svg viewBox="0 0 36 36" aria-hidden="true">
+      <path class="body" d="M18 2 C20.5 11 25 15.5 34 18 C25 20.5 20.5 25 18 34 C15.5 25 11 20.5 2 18 C11 15.5 15.5 11 18 2 Z"/>
+      ${mascotFace(mood, 16.5)}
+    </svg>`;
+  }
+  if (id === 'chatgpt') {
+    // ต้นกล้าสีเขียว
+    return `<svg viewBox="0 0 36 36" aria-hidden="true">
+      <path class="leaf" d="M18 8 C18 3.5 21.5 1.5 25 1.5 C25 6 21.5 8 18 8 Z"/>
+      <path class="leaf l2" d="M18 8 C18 4.5 15 3 12 3 C12 6.5 15 8 18 8 Z"/>
+      <circle class="body" cx="18" cy="21.5" r="12.5"/>
+      ${mascotFace(mood, 20)}
+    </svg>`;
+  }
+  // grok — ยูเอฟโอสีม่วง
+  return `<svg viewBox="0 0 36 36" aria-hidden="true">
+    <line class="ant" x1="18" y1="7" x2="18" y2="4"/>
+    <circle class="ant-tip" cx="18" cy="3" r="1.5"/>
+    <circle class="body" cx="18" cy="16" r="8.5"/>
+    ${mascotFace(mood, 14.5, 3)}
+    <ellipse class="saucer" cx="18" cy="25" rx="14.5" ry="5"/>
+    <circle class="lamp" cx="7.5" cy="24.5" r="1.2"/>
+    <circle class="lamp l2" cx="18" cy="27" r="1.2"/>
+    <circle class="lamp l3" cx="28.5" cy="24.5" r="1.2"/>
+  </svg>`;
+}
+
 function cardHtml(p) {
   const accent = p.accent || '#8ea2c0';
-  const monogram = (p.name || '?')[0];
   if (p.state !== 'ok') {
     const msg = p.message || 'ไม่พบข้อมูล';
     return `
     <section class="card" style="--accent:${accent}" data-id="${p.id}">
       <div class="card-head">
-        <div class="mark">${monogram}</div>
+        <div class="mascot m-${p.id}">${mascotSvg(p.id, 'sleep')}</div>
         <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
       </div>
       <div class="empty">
@@ -79,10 +125,11 @@ function cardHtml(p) {
     ? `เต็มใน ~${fmtCountdown(p.etaMs)}`
     : 'อัตราคงที่';
 
+  const mood = pct >= 90 ? 'sad' : pct >= 70 ? 'worry' : 'happy';
   return `
   <section class="card" style="--accent:${accent}" data-id="${p.id}">
     <div class="card-head">
-      <div class="mark">${monogram}</div>
+      <div class="mascot m-${p.id} ${mood}">${mascotSvg(p.id, mood)}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
       ${p.live ? '<span class="live-dot" title="% ทางการจาก claude.ai โดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : ''}
       <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
