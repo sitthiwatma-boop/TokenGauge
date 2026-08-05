@@ -170,6 +170,15 @@ async function pushUsage() {
       } catch { /* ใช้ค่าประมาณต่อ */ }
     }
   }
+  // ปักหมุดด้วยมือ (เช่น Grok จากเว็บ) — ใช้เฉพาะการ์ดที่ไม่มีแหล่งข้อมูลสด
+  for (const p of data.providers) {
+    const m = config.providers[p.id]?.manual;
+    if (!m || p.live || !p.ok) continue;
+    if (!(m.resetAt > Date.now())) continue; // รอบที่ปักไว้หมดแล้ว กลับไปใช้ค่าประมาณ
+    p.weekly.pct = Math.max(0, Math.min(999, Number(m.pct) || 0));
+    p.weekly.resetAt = m.resetAt;
+    p.manual = true;
+  }
   if (!win || win.isDestroyed()) return;
   win.webContents.send('usage', data);
   updateTrayTitle(data);

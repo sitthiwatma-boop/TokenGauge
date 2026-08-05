@@ -27,6 +27,12 @@ function fmtCountdown(ms) {
   return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 const level = (pct) => (pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '');
+const dtLocal = (ms) => {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const p2 = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+};
 const el = (html) => {
   const t = document.createElement('template');
   t.innerHTML = html.trim();
@@ -112,7 +118,9 @@ function cardHtml(p) {
     </section>`;
   }
 
-  const pct = p.session.pct;
+  // การ์ดที่ปักหมุดด้วยมือ (เช่น Grok) ให้เกจหลักโชว์ % รายสัปดาห์จากเว็บแทนบล็อก 5 ชม.
+  const pct = p.manual ? p.weekly.pct : p.session.pct;
+  const gaugeLabel = p.manual ? 'รายสัปดาห์ · จากเว็บ' : 'บล็อก 5 ชั่วโมง';
   const off = ARC_LEN * (1 - Math.min(1, pct / 100));
   const spark = p.spark || [];
   const peak = Math.max(1, ...spark);
@@ -131,7 +139,7 @@ function cardHtml(p) {
     <div class="card-head">
       <div class="mascot m-${p.id} ${mood}">${mascotSvg(p.id, mood)}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
-      ${p.live ? '<span class="live-dot" title="% ทางการจาก claude.ai โดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : ''}
+      ${p.live ? '<span class="live-dot" title="% ทางการจากผู้ให้บริการโดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : p.manual ? '<span class="live-dot man" title="ปักหมุดจากเว็บด้วยมือ — อัปเดตได้ในหน้าตั้งค่า">ปักหมุด</span>' : ''}
       <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
     </div>
 
@@ -155,7 +163,7 @@ function cardHtml(p) {
       </svg>
       <div class="gauge-val">
         <b>${Math.round(pct)}<i>%</i></b>
-        <span>บล็อก 5 ชั่วโมง</span>
+        <span>${gaugeLabel}</span>
       </div>
     </div>
 
@@ -165,7 +173,7 @@ function cardHtml(p) {
         <div class="bar ${level(pct)}"><i style="width:${Math.min(100, pct)}%"></i></div>
       </div>
       <div class="row">
-        <div class="l"><span>รายสัปดาห์</span><em>${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}</em></div>
+        <div class="l"><span>รายสัปดาห์</span><em>${p.manual ? Math.round(p.weekly.pct) + '% จากเว็บ' : `${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}`}</em></div>
         <div class="bar ${level(p.weekly.pct)}"><i style="width:${Math.min(100, p.weekly.pct)}%"></i></div>
       </div>
     </div>
@@ -174,7 +182,7 @@ function cardHtml(p) {
 
     <div class="foot">
       <span class="k">รีเซ็ตอีก</span>
-      <span class="t" data-reset="${p.session.resetAt || ''}">--:--</span>
+      <span class="t" data-reset="${p.session.resetAt || p.weekly.resetAt || ''}">--:--</span>
       <span class="k" style="margin-left:12px">${eta}</span>
     </div>
   </section>`;
@@ -275,6 +283,22 @@ function renderSettings() {
         <p class="cal-note">เมื่อเปิด แอปจะอ่าน token ของ Claude Code ในเครื่อง แล้วต่อเน็ตหา Anthropic
         ที่เดียวเท่านั้นเพื่อถาม % ทางการ — เป็นข้อยกเว้นเดียวจากกฎออฟไลน์ของแอป ปิดได้ตลอดเวลา</p>
       </div>` : ''}
+      ${p.id === 'grok' ? `
+      <div class="field">
+        <label>ปักหมุด % จากเว็บ grok.com (รายสัปดาห์)</label>
+        <div class="cal-row">
+          <input type="number" data-f="man-pct" placeholder="% ที่ใช้ไป" min="0" max="100" step="0.1" value="${p.manual?.pct ?? ''}">
+          <input type="datetime-local" data-f="man-reset" value="${dtLocal(p.manual?.resetAt)}">
+          <button class="btn" data-act="pin">ปักหมุด</button>
+        </div>
+        <p class="cal-note" data-role="man-note">${
+          p.manual && p.manual.resetAt > Date.now()
+            ? `ปักไว้ ${p.manual.pct}% รีเซ็ต ${new Date(p.manual.resetAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>`
+            : p.manual
+            ? 'รอบที่ปักไว้หมดแล้ว — เปิด grok.com ดู % ใหม่แล้วปักอีกครั้ง <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>'
+            : 'Grok ไม่มีช่องทางดึงอัตโนมัติ — เปิด grok.com → Settings → Usage แล้วคัดลอก % กับเวลารีเซ็ตมากรอก'
+        }</p>
+      </div>` : ''}
       <label class="toggle"><input type="checkbox" data-f="enabled" ${p.enabled ? 'checked' : ''}><i class="sw"></i>เปิดใช้งานการ์ดนี้</label>
     </div>`
     )
@@ -342,6 +366,30 @@ document.addEventListener('click', async (e) => {
   if (act === 'cal-clear') {
     const group = e.target.closest('.pgroup');
     config = await window.api.setProvider(group.dataset.id, { calibration: null });
+    renderSettings();
+  }
+
+  if (act === 'pin') {
+    const group = e.target.closest('.pgroup');
+    const pctV = parseFloat(group.querySelector('[data-f=man-pct]').value);
+    const rsV = group.querySelector('[data-f=man-reset]').value;
+    const note = group.querySelector('[data-role=man-note]');
+    const resetAt = rsV ? new Date(rsV).getTime() : NaN;
+    if (!(pctV >= 0 && pctV <= 100)) {
+      note.textContent = 'กรอก % ระหว่าง 0–100';
+      return;
+    }
+    if (!(resetAt > Date.now())) {
+      note.textContent = 'เลือกเวลารีเซ็ตที่ยังมาไม่ถึง (ดูจากหน้า Usage ของ grok.com)';
+      return;
+    }
+    config = await window.api.setProvider(group.dataset.id, { manual: { pct: pctV, resetAt, at: Date.now() } });
+    renderSettings();
+  }
+
+  if (act === 'man-clear') {
+    const group = e.target.closest('.pgroup');
+    config = await window.api.setProvider(group.dataset.id, { manual: null });
     renderSettings();
   }
 });

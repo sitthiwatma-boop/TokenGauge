@@ -55,6 +55,7 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'auto',
     calibration: null,
+    manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ (Grok ไม่มีช่องทางดึงอัตโนมัติ)
     windows: { session: true, weekly: true }
   }
 };
