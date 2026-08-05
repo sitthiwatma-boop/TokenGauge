@@ -529,6 +529,7 @@ document.getElementById('sheet').onclick = (e) => {
 };
 document.getElementById('b-refresh').onclick = () => window.api.refresh();
 document.getElementById('b-csv').onclick = () => window.api.exportCsv();
+document.getElementById('b-report').onclick = () => window.api.exportReport();
 
 document.getElementById('w-min').onclick = () => window.api.window('minimize');
 document.getElementById('w-max').onclick = () => window.api.window('maximize');

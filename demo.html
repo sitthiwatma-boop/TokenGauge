@@ -542,6 +542,7 @@ body.mini .mascot { width: 24px; height: 24px; }
   <label class="toggle"><input type="checkbox" id="t-boot"><i class="sw"></i>เปิดพร้อม Windows</label>
   <div class="spacer"></div>
   <button class="btn" id="b-csv">ส่งออก CSV</button>
+  <button class="btn" id="b-report">รายงานเดือนนี้</button>
   <button class="btn" id="b-set">ตั้งค่า</button>
   <button class="btn primary" id="b-refresh">รีเฟรช</button>
 </div>
@@ -641,7 +642,7 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
     if(hr>=8&&hr<=23){const v=Math.round(Math.max(0,(Math.sin(i/9+seed)+0.7))*amp*Math.random());if(v>500)s[t]=v;}}
    slots[id]=s;}
   return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'grok',name:'Grok',accent:'#A78BFA'}],slots};},
- pickFolder:async()=>null,exportCsv:async()=>null,
+ pickFolder:async()=>null,exportCsv:async()=>null,exportReport:async()=>null,
  window:(a)=>{if(a==='mini')window.api.setMini(!document.body.classList.contains('mini'));},
  sendTrayIcon:()=>{},
  setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},
@@ -1180,6 +1181,7 @@ document.getElementById('sheet').onclick = (e) => {
 };
 document.getElementById('b-refresh').onclick = () => window.api.refresh();
 document.getElementById('b-csv').onclick = () => window.api.exportCsv();
+document.getElementById('b-report').onclick = () => window.api.exportReport();
 
 document.getElementById('w-min').onclick = () => window.api.window('minimize');
 document.getElementById('w-max').onclick = () => window.api.window('maximize');

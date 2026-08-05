@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   getHistory: () => ipcRenderer.invoke('get-history'),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   exportCsv: () => ipcRenderer.invoke('export-csv'),
+  exportReport: () => ipcRenderer.invoke('export-report'),
   window: (action) => ipcRenderer.send('window', action),
   setMini: (on) => ipcRenderer.send('set-mini', !!on),
   sendTrayIcon: (dataUrl) => ipcRenderer.send('tray-icon', dataUrl),

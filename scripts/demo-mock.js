@@ -38,7 +38,7 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
     if(hr>=8&&hr<=23){const v=Math.round(Math.max(0,(Math.sin(i/9+seed)+0.7))*amp*Math.random());if(v>500)s[t]=v;}}
    slots[id]=s;}
   return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'grok',name:'Grok',accent:'#A78BFA'}],slots};},
- pickFolder:async()=>null,exportCsv:async()=>null,
+ pickFolder:async()=>null,exportCsv:async()=>null,exportReport:async()=>null,
  window:(a)=>{if(a==='mini')window.api.setMini(!document.body.classList.contains('mini'));},
  sendTrayIcon:()=>{},
  setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},

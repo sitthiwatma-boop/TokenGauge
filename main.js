@@ -6,6 +6,7 @@ const cfgStore = require('./src/config');
 const usage = require('./src/usage');
 const liveusage = require('./src/liveusage');
 const history = require('./src/history');
+const report = require('./src/report');
 
 let win = null;
 let tray = null;
@@ -441,6 +442,17 @@ ipcMain.handle('export-csv', async () => {
   });
   if (r.canceled) return null;
   fs.writeFileSync(r.filePath, '\uFEFF' + usage.exportCsv(config), 'utf8');
+  shell.showItemInFolder(r.filePath);
+  return r.filePath;
+});
+
+ipcMain.handle('export-report', async () => {
+  const r = await dialog.showSaveDialog(win, {
+    defaultPath: `tokengauge-report-${new Date().toISOString().slice(0, 7)}.html`,
+    filters: [{ name: 'HTML', extensions: ['html'] }]
+  });
+  if (r.canceled) return null;
+  fs.writeFileSync(r.filePath, report.buildReport(config, history.slots(app)), 'utf8');
   shell.showItemInFolder(r.filePath);
   return r.filePath;
 });
