@@ -235,6 +235,23 @@ body.mini .live-dot { display: none; }
 .gauge-val b i { font-size: 18px; font-style: normal; color: var(--muted); margin-left: 2px; }
 .gauge-val span { display: block; color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; margin-top: 5px; }
 
+/* วงแหวน % กลม — แสดงเฉพาะโหมดมินิ */
+.minigauge { display: none; position: relative; place-items: center; }
+.minigauge svg { width: 64px; height: 64px; transform: rotate(-90deg); }
+.minigauge .ring-bg { fill: none; stroke: var(--track); stroke-width: 6; }
+.minigauge .ring-fg {
+  fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), stroke 0.4s;
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+.minigauge b {
+  position: absolute;
+  font-family: var(--font-display); font-weight: 600; font-size: 15px;
+  color: color-mix(in srgb, var(--accent) 60%, #fff);
+  font-variant-numeric: tabular-nums;
+}
+.minigauge b i { font-style: normal; font-size: 9px; color: var(--muted); margin-left: 1px; }
+
 .rows { margin-top: 10px; display: grid; gap: 11px; }
 .row .l { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
 .row .l span { color: var(--muted); font-size: 12px; }
@@ -353,11 +370,16 @@ body.mini .live-dot { display: none; }
 ::-webkit-scrollbar-thumb { background: #263042; border-radius: 9px; border: 2px solid var(--bg); }
 
 /* ---------- โหมดมินิ ---------- */
-body.mini main { padding: 10px 12px; height: calc(100% - 44px); }
-body.mini .head, body.mini .bottom, body.mini .gauge, body.mini .spark, body.mini .foot .k { display: none; }
+body.mini main { padding: 8px 10px; height: calc(100% - 44px); overflow: hidden; }
+body.mini .head, body.mini .bottom, body.mini .gauge, body.mini .spark, body.mini .rows, body.mini .foot .k { display: none; }
 body.mini .grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-body.mini .card { padding: 10px; }
-body.mini .card-head { margin-bottom: 8px; }
+body.mini .card { padding: 8px 10px 6px; }
+body.mini .card-head { margin-bottom: 4px; }
+body.mini .minigauge { display: grid; margin: 2px auto 0; }
+body.mini .foot { margin-top: 4px; padding-top: 6px; justify-content: center; }
+body.mini .foot .t { margin-left: 0; font-size: 12px; }
+body.mini .empty { padding: 6px 0; }
+body.mini .empty .big, body.mini .empty .btn { display: none; }
 body.mini .pill, body.mini .card-head .s { display: none; }
 body.mini .mark { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
 body.mini .mascot { width: 24px; height: 24px; }

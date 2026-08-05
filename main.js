@@ -81,7 +81,7 @@ function rebuildTrayMenu() {
   );
 }
 
-const MINI_W = 360, MINI_H = 190, MINI_GAP = 12;
+const MINI_W = 380, MINI_H = 205, MINI_GAP = 12;
 
 function setMini(on) {
   miniMode = on;
@@ -89,6 +89,8 @@ function setMini(on) {
   if (on) {
     win.setResizable(false);
     win.setAlwaysOnTop(true, 'screen-saver');
+    // ต้องปลดขนาดขั้นต่ำก่อน ไม่งั้น setSize โดนดีดกลับไป 720x520
+    win.setMinimumSize(1, 1);
     win.setSize(MINI_W, MINI_H);
     // เกาะมุมขวาล่างของพื้นที่ทำงาน (เหนือ taskbar)
     const wa = screen.getPrimaryDisplay().workArea;
@@ -97,6 +99,7 @@ function setMini(on) {
   } else {
     win.setResizable(true);
     win.setAlwaysOnTop(!!config.alwaysOnTop);
+    win.setMinimumSize(720, 520);
     win.setSize(1080, 720);
     win.center();
   }

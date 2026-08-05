@@ -135,6 +135,16 @@ function cardHtml(p) {
       <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'คลิกเพื่อสลับแพลน'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
     </div>
 
+    <div class="minigauge">
+      <svg viewBox="0 0 60 60">
+        <circle class="ring-bg" cx="30" cy="30" r="25"/>
+        <circle class="ring-fg" cx="30" cy="30" r="25"
+          stroke-dasharray="157.1" stroke-dashoffset="${(157.1 * (1 - Math.min(1, pct / 100))).toFixed(1)}"
+          style="${pct >= 90 ? 'stroke:var(--danger)' : pct >= 70 ? 'stroke:var(--warn)' : ''}"/>
+      </svg>
+      <b>${Math.round(pct)}<i>%</i></b>
+    </div>
+
     <div class="gauge">
       <svg viewBox="0 0 186 118" aria-label="ใช้ไป ${Math.round(pct)} เปอร์เซ็นต์">
         ${ticks()}
