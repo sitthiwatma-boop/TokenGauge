@@ -287,9 +287,9 @@ function renderSettings() {
         <p class="cal-note">เมื่อเปิด แอปจะอ่าน token ของ Claude Code ในเครื่อง แล้วต่อเน็ตหา Anthropic
         ที่เดียวเท่านั้นเพื่อถาม % ทางการ — เป็นข้อยกเว้นเดียวจากกฎออฟไลน์ของแอป ปิดได้ตลอดเวลา</p>
       </div>` : ''}
-      ${p.id === 'grok' ? `
+      ${p.id !== 'claude' ? `
       <div class="field">
-        <label>ปักหมุด % จากเว็บ grok.com (รายสัปดาห์)</label>
+        <label>ปักหมุด % จากหน้าเว็บ (รายสัปดาห์)</label>
         <div class="cal-row">
           <input type="number" data-f="man-pct" placeholder="% ที่ใช้ไป" min="0" max="100" step="0.1" value="${p.manual?.pct ?? ''}">
           <input type="datetime-local" data-f="man-reset" value="${dtLocal(p.manual?.resetAt)}">
@@ -299,8 +299,8 @@ function renderSettings() {
           p.manual && p.manual.resetAt > Date.now()
             ? `ปักไว้ ${p.manual.pct}% รีเซ็ต ${new Date(p.manual.resetAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>`
             : p.manual
-            ? 'รอบที่ปักไว้หมดแล้ว — เปิด grok.com ดู % ใหม่แล้วปักอีกครั้ง <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>'
-            : 'Grok ไม่มีช่องทางดึงอัตโนมัติ — เปิด grok.com → Settings → Usage แล้วคัดลอก % กับเวลารีเซ็ตมากรอก'
+            ? 'รอบที่ปักไว้หมดแล้ว — เปิดหน้า Usage บนเว็บดู % ใหม่แล้วปักอีกครั้ง <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>'
+            : 'เปิดหน้า Usage บนเว็บของผู้ให้บริการ แล้วคัดลอก % ที่ใช้ไปกับเวลารีเซ็ตมากรอก (โควตาฝั่งเว็บมองไม่เห็นจากในเครื่อง)'
         }</p>
       </div>` : ''}
       <label class="toggle"><input type="checkbox" data-f="enabled" ${p.enabled ? 'checked' : ''}><i class="sw"></i>เปิดใช้งานการ์ดนี้</label>

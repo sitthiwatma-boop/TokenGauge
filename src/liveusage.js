@@ -148,8 +148,10 @@ function readTail(file, bytes = 262144) {
 function mapCodexWindow(w, ts) {
   if (!w || typeof w.used_percent !== 'number') return null;
   const resetAt = w.resets_at ? w.resets_at * 1000 : ts + (w.window_minutes || 0) * 60000;
-  // หน้าต่างรีเซ็ตไปแล้วและไม่มี event ใหม่กว่า = ไม่ได้ใช้เลยหลังรีเซ็ต → 0%
-  if (Date.now() >= resetAt) return { pct: 0, resetAt: null };
+  // หน้าต่างที่รีเซ็ตไปแล้ว = "ไม่รู้" สถานะปัจจุบัน ห้ามเดาว่า 0% —
+  // โควตานี้แชร์กับ Work / Workspace Agents / ChatGPT for Excel ฝั่งเว็บ
+  // ซึ่งกินโควตาได้โดยไม่ทิ้งร่องรอยในเครื่องเลย (เคยเดาผิดมาแล้ว)
+  if (Date.now() >= resetAt) return null;
   return { pct: Math.max(0, Math.min(999, w.used_percent)), resetAt };
 }
 
