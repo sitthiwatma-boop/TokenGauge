@@ -208,4 +208,130 @@ function fetchCodexLive(roots) {
   return null;
 }
 
-module.exports = { fetchLive, fetchCodexLive };
+/* ---------- ChatGPT ผ่าน API โดยตรง (opt-in, ทดลอง) ----------
+ * ใช้ token ของ Codex CLI ถาม backend ของ ChatGPT แบบเดียวกับฝั่ง Claude
+ * endpoint ไม่มีเอกสารทางการ จึงลองหลายตัวตามลำดับ — ถ้าใช้ไม่ได้
+ * แอปจะถอยไปอ่านจาก log / ค่าปักหมุดเองโดยอัตโนมัติ ไม่มีอะไรพัง
+ * เงื่อนไขเดิม: ไม่ log ไม่เก็บ token และส่งหา chatgpt.com ที่เดียวเท่านั้น
+ */
+const CODEX_API_PATHS = ['/backend-api/codex/usage', '/backend-api/wham/usage'];
+
+let codexApi = { at: 0, data: null, error: null };
+let codexApiLastGood = { at: 0, data: null };
+let codexApiBackoffUntil = 0;
+
+function readCodexToken() {
+  const p = path.join(os.homedir(), '.codex', 'auth.json');
+  let raw;
+  try {
+    raw = fs.readFileSync(p, 'utf8');
+  } catch {
+    throw new Error('ไม่พบไฟล์ auth ของ Codex — ล็อกอิน Codex CLI ก่อน');
+  }
+  const j = JSON.parse(raw);
+  const tok = j?.tokens?.access_token;
+  if (!tok) throw new Error('ไม่พบ access token ของ Codex');
+  return { tok, acc: j?.tokens?.account_id || '' };
+}
+
+function codexRequest(reqPath, auth) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        host: 'chatgpt.com',
+        path: reqPath,
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${auth.tok}`,
+          'chatgpt-account-id': auth.acc,
+          'Content-Type': 'application/json',
+          'User-Agent': 'codex-cli'
+        },
+        timeout: 10000
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          if (res.statusCode !== 200) return resolve({ status: res.statusCode });
+          try {
+            resolve({ status: 200, json: JSON.parse(body) });
+          } catch {
+            resolve({ status: 200, json: null });
+          }
+        });
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('หมดเวลาเชื่อมต่อ')));
+    req.on('error', () => reject(new Error('ต่ออินเทอร์เน็ตไม่ได้')));
+    req.end();
+  });
+}
+
+/** แปลงคำตอบ (โครงไม่แน่นอน) เป็น { session, weekly } — คืน null ถ้าอ่านไม่ออก */
+function parseCodexApi(json) {
+  if (!json) return null;
+  const rl = json.rate_limits || json.rateLimits || json;
+  const out = { session: null, weekly: null };
+  // แบบเดียวกับใน log: primary/secondary + window_minutes
+  for (const w of [rl.primary, rl.secondary]) {
+    if (!w || typeof w.used_percent !== 'number') continue;
+    const resetAt = w.resets_at ? w.resets_at * 1000 : null;
+    const v = { pct: Math.max(0, Math.min(999, w.used_percent)), resetAt };
+    if ((w.window_minutes || 0) <= 600) out.session = v;
+    else out.weekly = v;
+  }
+  // เผื่อโครงแบบเดียวกับของ Anthropic
+  if (!out.session && !out.weekly) {
+    out.session = normalize(windowOf(rl, ['five_hour', 'session']));
+    out.weekly = normalize(windowOf(rl, ['seven_day', 'weekly']));
+  }
+  return out.session || out.weekly ? out : null;
+}
+
+async function fetchCodexApiLive() {
+  const now = Date.now();
+  if (now - codexApi.at < CACHE_MS) {
+    if (codexApi.error) throw new Error(codexApi.error);
+    if (codexApi.data) return codexApi.data;
+  }
+  if (now < codexApiBackoffUntil) {
+    if (codexApiLastGood.data && now - codexApiLastGood.at < STALE_MS) return codexApiLastGood.data;
+    throw new Error(codexApi.error || 'พัก API ชั่วคราว');
+  }
+  try {
+    const auth = readCodexToken();
+    let lastStatus = 0;
+    for (const p of CODEX_API_PATHS) {
+      const r = await codexRequest(p, auth);
+      lastStatus = r.status;
+      if (r.status === 200) {
+        const data = parseCodexApi(r.json);
+        if (!data) continue;
+        codexApi = { at: now, data, error: null };
+        codexApiLastGood = { at: now, data };
+        return data;
+      }
+      if (r.status === 401 || r.status === 403) {
+        throw new Error('token ของ Codex หมดอายุ — ใช้งาน Codex สักครั้งเพื่อต่ออายุ');
+      }
+      if (r.status === 429) {
+        codexApiBackoffUntil = now + BACKOFF_MS;
+        throw new Error('ถูกจำกัดคำขอชั่วคราว');
+      }
+    }
+    // ไม่มี endpoint ไหนใช้ได้ (404/รูปแบบไม่รู้จัก) — พักยาวหน่อย ไม่ยิงถี่
+    codexApiBackoffUntil = now + BACKOFF_MS;
+    throw new Error(`OpenAI ยังไม่เปิด endpoint ให้ถาม (${lastStatus}) — ใช้ข้อมูลจาก log แทน`);
+  } catch (err) {
+    const msg = String(err.message || err);
+    if (codexApiLastGood.data && now - codexApiLastGood.at < STALE_MS) {
+      codexApi = { at: now, data: codexApiLastGood.data, error: null };
+      return codexApiLastGood.data;
+    }
+    codexApi = { at: now, data: null, error: msg };
+    throw err;
+  }
+}
+
+module.exports = { fetchLive, fetchCodexLive, fetchCodexApiLive };

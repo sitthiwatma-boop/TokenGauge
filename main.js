@@ -193,15 +193,28 @@ async function pushUsage() {
       }
     }
   }
-  // ChatGPT: % ทางการจาก rate_limits ใน log ของ Codex เอง — อ่านในเครื่องล้วน ไม่ต่อเน็ต
+  // ChatGPT: ลอง API โดยตรงก่อน (opt-in) → ถอยไป rate_limits ใน log ของ Codex
   {
     const cp = config.providers.chatgpt;
     const p = data.providers.find((x) => x.id === 'chatgpt');
     if (cp?.enabled && p && p.ok) {
-      try {
-        const live = liveusage.fetchCodexLive(cp.roots);
-        if (live) applyLive(p, live);
-      } catch { /* ใช้ค่าประมาณต่อ */ }
+      let live = null;
+      if (cp.liveUsage) {
+        try {
+          live = await liveusage.fetchCodexApiLive();
+        } catch (err) {
+          p.liveError = String(err.message || err);
+        }
+      }
+      if (!live) {
+        try {
+          live = liveusage.fetchCodexLive(cp.roots);
+        } catch { /* ใช้ค่าประมาณต่อ */ }
+      }
+      if (live) {
+        applyLive(p, live);
+        delete p.liveError;
+      }
     }
   }
   // ปักหมุดด้วยมือ (เช่น Grok จากเว็บ) — ใช้เฉพาะการ์ดที่ไม่มีแหล่งข้อมูลสด
@@ -226,6 +239,7 @@ async function pushUsage() {
     p.weekly.pct = Math.max(0, Math.min(999, Number(m.pct) || 0));
     p.weekly.resetAt = m.resetAt;
     p.manual = true;
+    delete p.liveError; // มีค่าปักหมุดใช้อยู่ ป้ายเตือน API ไม่จำเป็น
   }
   // บันทึกประวัติรายชั่วโมง แล้วให้กราฟ 24 ชม. อ่านจากประวัติแทน — ข้อมูลไม่หายแม้ log ถูกลบ
   history.record(app, data.providers);

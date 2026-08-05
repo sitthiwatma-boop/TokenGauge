@@ -27,10 +27,11 @@
 
    > **ข้อยกเว้นที่ผู้ใช้อนุมัติแล้ว (ส.ค. 2026) มี 2 อย่างเท่านั้น:**
    >
-   > 1) `liveUsage` ใน `src/liveusage.js` — opt-in (ปิดเป็นค่าเริ่มต้น)
-   > อ่านเฉพาะ `accessToken` จาก `~/.claude/.credentials.json` แล้วเรียก
-   > `api.anthropic.com/api/oauth/usage` (endpoint เดียวกับคำสั่ง /usage ของ Claude Code)
-   > เพื่อดึง % โควตาทางการ ห้าม log/เก็บ/ส่ง token ไปที่อื่น
+   > 1) `liveUsage` ใน `src/liveusage.js` — opt-in (ปิดเป็นค่าเริ่มต้น) ครอบคลุม 2 เจ้า:
+   > Claude อ่าน `accessToken` จาก `~/.claude/.credentials.json` → `api.anthropic.com/api/oauth/usage`
+   > และ ChatGPT อ่าน `tokens.access_token` จาก `~/.codex/auth.json` → `chatgpt.com/backend-api/*`
+   > (ทดลอง — endpoint ไม่ทางการ) แต่ละ token ส่งหาเซิร์ฟเวอร์ของเจ้าของ token เท่านั้น
+   > ห้าม log/เก็บ/ส่งไปที่อื่นเด็ดขาด
    >
    > 2) `autoUpdate` — เช็คเวอร์ชันใหม่จาก GitHub Releases ของโปรเจกต์นี้เอง
    > ทำงานเฉพาะตัวที่แพ็กเป็น .exe แล้ว ปิดได้ด้วย `autoUpdate: false` ใน config

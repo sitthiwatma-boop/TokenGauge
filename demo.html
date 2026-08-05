@@ -1044,7 +1044,13 @@ function renderSettings() {
       <div class="field" style="margin-bottom:8px">
         <label class="toggle"><input type="checkbox" data-f="live" ${p.liveUsage ? 'checked' : ''}><i class="sw"></i>ดึง % ทางการจาก claude.ai (เรียลไทม์)</label>
         <p class="cal-note">เมื่อเปิด แอปจะอ่าน token ของ Claude Code ในเครื่อง แล้วต่อเน็ตหา Anthropic
-        ที่เดียวเท่านั้นเพื่อถาม % ทางการ — เป็นข้อยกเว้นเดียวจากกฎออฟไลน์ของแอป ปิดได้ตลอดเวลา</p>
+        ที่เดียวเท่านั้นเพื่อถาม % ทางการ — ปิดได้ตลอดเวลา</p>
+      </div>` : ''}
+      ${p.id === 'chatgpt' ? `
+      <div class="field" style="margin-bottom:8px">
+        <label class="toggle"><input type="checkbox" data-f="live" ${p.liveUsage ? 'checked' : ''}><i class="sw"></i>ถาม % ทางการจาก ChatGPT โดยตรง (ทดลอง)</label>
+        <p class="cal-note">อ่าน token ของ Codex CLI แล้วถาม chatgpt.com ที่เดียวเท่านั้น —
+        endpoint ฝั่งนี้ไม่มีเอกสารทางการ ถ้าใช้ไม่ได้แอปจะถอยไปอ่านจาก log/ค่าปักหมุดเอง</p>
       </div>` : ''}
       ${p.id !== 'claude' ? `
       <div class="field">

@@ -38,6 +38,7 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'auto',
     calibration: null,
+    liveUsage: false, // opt-in ทดลอง: ถาม % ทางการจาก backend ของ ChatGPT ด้วย token ของ Codex
     windows: { session: true, weekly: true }
   },
   grok: {
