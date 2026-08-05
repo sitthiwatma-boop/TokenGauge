@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>TokenGauge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="brand"><b>TOKENGAUGE</b><span>มาตรวัดโควตา AI</span></div>
+  <div class="live"><i class="dot"></i><span id="updated">กำลังอ่านข้อมูล…</span></div>
+  <div class="win-btns">
+    <button id="w-mini" title="โหมดมินิ">▭</button>
+    <button id="w-min" title="ย่อ">─</button>
+    <button id="w-max" title="ขยาย">□</button>
+    <button id="w-close" class="close" title="ซ่อนลงถาดระบบ">✕</button>
+  </div>
+</div>
+
+<main>
+  <div class="head">
+    <h1>ภาพรวมการใช้งาน</h1>
+    <div class="sub" id="head-sub"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<div class="bottom">
+  <label class="toggle"><input type="checkbox" id="t-taskbar"><i class="sw"></i>แสดงในแถบงาน</label>
+  <label class="toggle"><input type="checkbox" id="t-top"><i class="sw"></i>ลอยอยู่บนสุด</label>
+  <label class="toggle"><input type="checkbox" id="t-boot"><i class="sw"></i>เปิดพร้อม Windows</label>
+  <div class="spacer"></div>
+  <button class="btn" id="b-csv">ส่งออก CSV</button>
+  <button class="btn" id="b-set">ตั้งค่า</button>
+  <button class="btn primary" id="b-refresh">รีเฟรช</button>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-inner">
+    <h2>ตั้งค่า</h2>
+    <p class="hint">
+      TokenGauge อ่านเฉพาะไฟล์ log ที่ CLI เขียนไว้ในเครื่องคุณเอง
+      ไม่แตะไฟล์ token หรือรหัสผ่าน และไม่ส่งข้อมูลออกนอกเครื่อง
+    </p>
+
+    <div class="field">
+      <label>รีเฟรชทุกกี่วินาที</label>
+      <input type="number" id="s-refresh" min="10" max="3600">
+    </div>
+    <div class="field">
+      <label>เตือนเมื่อใช้ถึง (%)</label>
+      <input type="number" id="s-alert" min="50" max="100">
+    </div>
+    <div class="field">
+      <label>วิธีนับรายสัปดาห์</label>
+      <select id="s-weekly">
+        <option value="rolling">ย้อนหลัง 7 วัน</option>
+        <option value="calendar">ตั้งแต่วันจันทร์</option>
+      </select>
+    </div>
+
+    <div id="prov-settings"></div>
+
+    <button class="btn primary" id="s-close" style="width:100%;margin-top:6px">เสร็จสิ้น</button>
+  </div>
+</div>
+
+<canvas id="tray-canvas" width="32" height="32" style="display:none"></canvas>
+<script src="app.js"></script>
+</body>
+</html>

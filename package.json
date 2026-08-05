@@ -1,0 +1,42 @@
+{
+  "name": "tokengauge",
+  "version": "1.0.0",
+  "description": "TokenGauge — มาตรวัดโควตา AI สำหรับ Claude / ChatGPT / Grok บน Windows",
+  "main": "main.js",
+  "author": "KruJo — The AI Teacher",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win",
+    "pack": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.theaiteacher.tokengauge",
+    "productName": "TokenGauge",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "assets/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "TokenGauge"
+    }
+  }
+}

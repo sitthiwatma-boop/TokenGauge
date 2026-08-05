@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8">
+<title>TokenGauge — ตัวอย่างหน้าตา</title>
+<style>/* TokenGauge — instrument cluster theme
+   display : Bahnschrift (มากับ Windows 10+) สำหรับตัวเลขหน้าปัด
+   body    : Segoe UI Variable / Leelawadee UI สำหรับภาษาไทย
+   utility : Cascadia Mono สำหรับตัวนับเวลา                        */
+
+:root {
+  --bg: #0b0e13;
+  --bg-2: #10151d;
+  --panel: #151b25;
+  --panel-2: #1b2331;
+  --line: rgba(255, 255, 255, 0.07);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --text: #e8eef7;
+  --muted: #7c8aa1;
+  --dim: #56637a;
+  --track: #232c3a;
+  --warn: #f5c451;
+  --danger: #ff6b6b;
+  --radius: 16px;
+  --font-display: 'Bahnschrift', 'Segoe UI Variable Display', 'Segoe UI Semibold', system-ui, sans-serif;
+  --font-body: 'Segoe UI Variable Text', 'Segoe UI', 'Leelawadee UI', 'Noto Sans Thai', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+}
+
+body::before {
+  /* แสงจาง ๆ ด้านบน ให้ความรู้สึกเป็นแผงหน้าปัดที่มีไฟส่อง */
+  content: '';
+  position: fixed;
+  inset: -30% 0 auto 0;
+  height: 60%;
+  background: radial-gradient(60% 100% at 50% 0%, rgba(90, 130, 200, 0.13), transparent 70%);
+  pointer-events: none;
+}
+
+/* ---------- title bar ---------- */
+.titlebar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 6px 0 16px;
+  -webkit-app-region: drag;
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 5;
+}
+.brand { display: flex; align-items: baseline; gap: 9px; }
+.brand b {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+.brand span { color: var(--dim); font-size: 11.5px; letter-spacing: 0.04em; }
+
+.live {
+  display: flex; align-items: center; gap: 7px;
+  margin-left: auto; margin-right: 10px;
+  color: var(--muted); font-size: 11.5px;
+  font-family: var(--font-mono);
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #3ddc84; box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.5);
+  animation: pulse 2.4s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.45); }
+  70% { box-shadow: 0 0 0 7px rgba(61, 220, 132, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); }
+}
+
+.win-btns { display: flex; -webkit-app-region: no-drag; }
+.win-btns button {
+  width: 42px; height: 44px;
+  background: none; border: 0; color: var(--muted);
+  font-size: 13px; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.win-btns button:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.win-btns button.close:hover { background: #c8352f; color: #fff; }
+
+/* ---------- layout ---------- */
+main {
+  height: calc(100% - 44px - 56px);
+  overflow-y: auto;
+  padding: 22px 22px 8px;
+}
+.head { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 18px; }
+.head h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 27px;
+  letter-spacing: -0.01em;
+}
+.head .sub { color: var(--dim); font-size: 12px; font-family: var(--font-mono); padding-bottom: 4px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+/* ---------- provider card ---------- */
+.card {
+  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+  animation: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.card::after {
+  /* เส้นแสงบางบนขอบบน สีตามผู้ให้บริการ */
+  content: '';
+  position: absolute; top: 0; left: 18px; right: 18px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.55;
+}
+.card:nth-child(2) { animation-delay: 0.06s; }
+.card:nth-child(3) { animation-delay: 0.12s; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.card-head { display: flex; align-items: center; gap: 11px; margin-bottom: 6px; }
+.mark {
+  width: 34px; height: 34px; flex: none;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-family: var(--font-display);
+  font-weight: 600; font-size: 16px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.card-head .n { font-weight: 600; font-size: 15px; }
+.card-head .s { color: var(--dim); font-size: 11.5px; }
+.pill {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px; letter-spacing: 0.04em;
+  padding: 4px 9px; border-radius: 999px;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  cursor: pointer;
+}
+.pill:hover { color: var(--text); border-color: var(--accent); }
+
+/* หน้าปัด — signature element */
+.gauge { display: grid; place-items: center; padding: 6px 0 2px; position: relative; }
+.gauge svg { width: 186px; height: 118px; overflow: visible; }
+.gauge .arc-bg { stroke: var(--track); }
+.gauge .arc-fg {
+  stroke: var(--accent);
+  transition: stroke-dashoffset 0.9s cubic-bezier(0.2, 0.8, 0.2, 1), stroke 0.4s;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 45%, transparent));
+}
+.gauge .tick { stroke: var(--line-strong); }
+.gauge-val {
+  position: absolute; top: 46px; text-align: center; pointer-events: none;
+}
+.gauge-val b {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 600; font-size: 40px; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.gauge-val b i { font-size: 18px; font-style: normal; color: var(--muted); margin-left: 2px; }
+.gauge-val span { display: block; color: var(--dim); font-size: 10.5px; letter-spacing: 0.1em; margin-top: 5px; }
+
+.rows { margin-top: 10px; display: grid; gap: 11px; }
+.row .l { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.row .l span { color: var(--muted); font-size: 12px; }
+.row .l em {
+  margin-left: auto; font-style: normal;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+.bar { height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; }
+.bar i {
+  display: block; height: 100%; border-radius: 3px;
+  background: var(--accent);
+  transition: width 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.3s;
+}
+.bar.warn i { background: var(--warn); }
+.bar.danger i { background: var(--danger); }
+
+/* กราฟ 24 ชม. */
+.spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; margin-top: 14px; }
+.spark i {
+  flex: 1; border-radius: 1.5px;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  min-height: 2px;
+  transition: height 0.5s;
+}
+.spark i.now { background: var(--accent); }
+
+.foot {
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--muted);
+}
+.foot .k { color: var(--dim); letter-spacing: 0.06em; }
+.foot .t { margin-left: auto; font-size: 15px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+.empty { padding: 26px 10px 30px; text-align: center; color: var(--muted); }
+.empty .big { font-size: 30px; opacity: 0.35; margin-bottom: 10px; }
+.empty p { margin: 0 0 14px; font-size: 12.5px; line-height: 1.6; }
+
+/* ---------- bottom bar ---------- */
+.bottom {
+  height: 56px;
+  border-top: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 18px;
+  background: rgba(11, 14, 19, 0.7);
+  backdrop-filter: blur(8px);
+}
+.toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+.toggle input { display: none; }
+.sw {
+  width: 34px; height: 19px; border-radius: 999px;
+  background: var(--track); position: relative; transition: background 0.2s;
+  border: 1px solid var(--line-strong);
+}
+.sw::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--muted); transition: transform 0.2s, background 0.2s;
+}
+.toggle input:checked + .sw { background: #2f6fd0; border-color: #2f6fd0; }
+.toggle input:checked + .sw::after { transform: translateX(15px); background: #fff; }
+
+.btn {
+  -webkit-app-region: no-drag;
+  padding: 9px 16px; border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2); color: var(--text);
+  font-family: var(--font-body); font-size: 12.5px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn:hover { border-color: var(--line-strong); background: #222c3c; }
+.btn.primary { background: #2f6fd0; border-color: #2f6fd0; }
+.btn.primary:hover { background: #3a7de0; }
+.spacer { margin-left: auto; }
+
+/* ---------- settings ---------- */
+.sheet {
+  position: fixed; inset: 0;
+  background: rgba(6, 9, 14, 0.6);
+  backdrop-filter: blur(3px);
+  display: none; z-index: 20;
+}
+.sheet.open { display: block; }
+.sheet-inner {
+  position: absolute; top: 0; right: 0; bottom: 0; width: min(440px, 92%);
+  background: var(--bg-2); border-left: 1px solid var(--line);
+  padding: 22px; overflow-y: auto;
+  animation: slide 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes slide { from { transform: translateX(100%); } to { transform: none; } }
+.sheet h2 { font-family: var(--font-display); font-size: 18px; margin: 0 0 4px; }
+.sheet .hint { color: var(--dim); font-size: 12px; line-height: 1.6; margin: 0 0 18px; }
+.field { margin-bottom: 16px; }
+.field label { display: block; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.field input[type=text], .field input[type=number], .field select {
+  width: 100%; padding: 9px 11px; border-radius: 9px;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  color: var(--text); font-family: var(--font-body); font-size: 12.5px;
+  user-select: text;
+}
+.field input:focus, .field select:focus { outline: 2px solid #2f6fd0; outline-offset: 1px; }
+.pgroup { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+.pgroup h3 { margin: 0 0 10px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.pgroup h3 b { width: 8px; height: 8px; border-radius: 50%; }
+.path-row { display: flex; gap: 6px; }
+.path-row .btn { padding: 8px 11px; font-size: 11.5px; white-space: nowrap; }
+
+::-webkit-scrollbar { width: 9px; }
+::-webkit-scrollbar-thumb { background: #263042; border-radius: 9px; border: 2px solid var(--bg); }
+
+/* ---------- โหมดมินิ ---------- */
+body.mini main { padding: 10px 12px; height: calc(100% - 44px); }
+body.mini .head, body.mini .bottom, body.mini .gauge, body.mini .spark, body.mini .foot .k { display: none; }
+body.mini .grid { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+body.mini .card { padding: 10px; }
+body.mini .card-head { margin-bottom: 8px; }
+body.mini .pill, body.mini .card-head .s { display: none; }
+body.mini .mark { width: 24px; height: 24px; font-size: 12px; border-radius: 7px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style></head>
+<body>
+
+<div class="titlebar">
+  <div class="brand"><b>TOKENGAUGE</b><span>มาตรวัดโควตา AI</span></div>
+  <div class="live"><i class="dot"></i><span id="updated">กำลังอ่านข้อมูล…</span></div>
+  <div class="win-btns">
+    <button id="w-mini" title="โหมดมินิ">▭</button>
+    <button id="w-min" title="ย่อ">─</button>
+    <button id="w-max" title="ขยาย">□</button>
+    <button id="w-close" class="close" title="ซ่อนลงถาดระบบ">✕</button>
+  </div>
+</div>
+
+<main>
+  <div class="head">
+    <h1>ภาพรวมการใช้งาน</h1>
+    <div class="sub" id="head-sub"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<div class="bottom">
+  <label class="toggle"><input type="checkbox" id="t-taskbar"><i class="sw"></i>แสดงในแถบงาน</label>
+  <label class="toggle"><input type="checkbox" id="t-top"><i class="sw"></i>ลอยอยู่บนสุด</label>
+  <label class="toggle"><input type="checkbox" id="t-boot"><i class="sw"></i>เปิดพร้อม Windows</label>
+  <div class="spacer"></div>
+  <button class="btn" id="b-csv">ส่งออก CSV</button>
+  <button class="btn" id="b-set">ตั้งค่า</button>
+  <button class="btn primary" id="b-refresh">รีเฟรช</button>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="sheet-inner">
+    <h2>ตั้งค่า</h2>
+    <p class="hint">
+      TokenGauge อ่านเฉพาะไฟล์ log ที่ CLI เขียนไว้ในเครื่องคุณเอง
+      ไม่แตะไฟล์ token หรือรหัสผ่าน และไม่ส่งข้อมูลออกนอกเครื่อง
+    </p>
+
+    <div class="field">
+      <label>รีเฟรชทุกกี่วินาที</label>
+      <input type="number" id="s-refresh" min="10" max="3600">
+    </div>
+    <div class="field">
+      <label>เตือนเมื่อใช้ถึง (%)</label>
+      <input type="number" id="s-alert" min="50" max="100">
+    </div>
+    <div class="field">
+      <label>วิธีนับรายสัปดาห์</label>
+      <select id="s-weekly">
+        <option value="rolling">ย้อนหลัง 7 วัน</option>
+        <option value="calendar">ตั้งแต่วันจันทร์</option>
+      </select>
+    </div>
+
+    <div id="prov-settings"></div>
+
+    <button class="btn primary" id="s-close" style="width:100%;margin-top:6px">เสร็จสิ้น</button>
+  </div>
+</div>
+
+<canvas id="tray-canvas" width="32" height="32" style="display:none"></canvas>
+
+
+<script>
+// ---- ตัวจำลองสำหรับดูหน้าตา ไม่ต้องติดตั้ง Electron ----
+const rnd=(n,s)=>Array.from({length:24},(_,i)=>Math.round(Math.max(0,Math.sin(i/2.2+s)*n+n*0.7+Math.random()*n*0.5)));
+const now=Date.now();
+const MOCK={updatedAt:now,providers:[
+ {id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',plan:'max20',planLabel:'Max 20x',ok:true,state:'ok',
+  session:{tokens:39600,limit:220000,pct:18,resetAt:now+2*3600e3},weekly:{tokens:211000,limit:2640000,pct:8},
+  burnPerHour:15400,etaMs:9.5*3600e3,spark:rnd(9000,0)},
+ {id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',plan:'plus',planLabel:'Plus',ok:true,state:'ok',
+  session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3},weekly:{tokens:388000,limit:720000,pct:54},
+  burnPerHour:28800,etaMs:32*60e3,spark:rnd(14000,2)},
+ {id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#9AA6FF',state:'unconfigured',
+  message:'ยังไม่พบโฟลเดอร์ log — ตั้ง path ได้ในหน้าตั้งค่า'}
+]};
+const CFG={refreshSeconds:60,alertThreshold:90,showInTaskbar:true,alwaysOnTop:false,startWithWindows:false,weeklyMode:'rolling',
+ providers:{claude:{id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',enabled:true,plan:'max20',roots:['C:\\Users\\you\\.claude\\projects']},
+ chatgpt:{id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',enabled:true,plan:'plus',roots:['C:\\Users\\you\\.codex\\sessions']},
+ grok:{id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#9AA6FF',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.grok']}}};
+let _cb=null;
+window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
+ setProvider:async(id,p)=>{Object.assign(CFG.providers[id],p);const m=MOCK.providers.find(x=>x.id===id);if(m&&p.plan){m.plan=p.plan;m.planLabel={auto:'อัตโนมัติ (P90)',pro:'Pro',max5:'Max 5x',max20:'Max 20x',plus:'Plus'}[p.plan];_cb&&_cb(MOCK);}return CFG;},
+ refresh:async()=>{MOCK.updatedAt=Date.now();_cb&&_cb(MOCK);},
+ pickFolder:async()=>null,exportCsv:async()=>null,window:()=>{},sendTrayIcon:()=>{},
+ onUsage:cb=>{_cb=cb;setTimeout(()=>cb(MOCK),80);},onMiniMode:()=>{}};
+</script>
+<script>'use strict';
+
+/* เรขาคณิตของหน้าปัด: ส่วนโค้ง 220 องศา */
+const CX = 93, CY = 92, R = 70, A0 = 200, A1 = -20;
+const ARC_LEN = R * ((A0 - A1) * Math.PI) / 180;
+const pt = (deg) => [CX + R * Math.cos((deg * Math.PI) / 180), CY - R * Math.sin((deg * Math.PI) / 180)];
+const ARC_D = (() => {
+  const [x0, y0] = pt(A0), [x1, y1] = pt(A1);
+  return `M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${R} ${R} 0 1 1 ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+})();
+
+let state = { providers: [], updatedAt: 0 };
+let config = null;
+
+/* ---------- ตัวช่วยจัดรูปแบบ ---------- */
+const fmtTokens = (n) => {
+  if (!n) return '0';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 1e5 ? 0 : 1) + 'k';
+  return String(Math.round(n));
+};
+function fmtCountdown(ms) {
+  if (ms === null || ms === undefined || ms < 0) return '--:--';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+const level = (pct) => (pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '');
+const el = (html) => {
+  const t = document.createElement('template');
+  t.innerHTML = html.trim();
+  return t.content.firstElementChild;
+};
+
+/* ---------- วาดการ์ด ---------- */
+function ticks() {
+  let s = '';
+  for (let i = 0; i <= 10; i++) {
+    const a = A0 - ((A0 - A1) * i) / 10;
+    const [x1, y1] = pt(a);
+    const rr = i % 5 === 0 ? 9 : 5;
+    const x2 = CX + (R - rr) * Math.cos((a * Math.PI) / 180);
+    const y2 = CY - (R - rr) * Math.sin((a * Math.PI) / 180);
+    s += `<line class="tick" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke-width="${i % 5 === 0 ? 1.6 : 1}"/>`;
+  }
+  return s;
+}
+
+function cardHtml(p) {
+  const accent = p.accent || '#8ea2c0';
+  const monogram = (p.name || '?')[0];
+  if (p.state !== 'ok') {
+    const msg = p.message || 'ไม่พบข้อมูล';
+    return `
+    <section class="card" style="--accent:${accent}" data-id="${p.id}">
+      <div class="card-head">
+        <div class="mark">${monogram}</div>
+        <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
+      </div>
+      <div class="empty">
+        <div class="big">◌</div>
+        <p>${msg}</p>
+        <button class="btn" data-act="settings">เปิดหน้าตั้งค่า</button>
+      </div>
+    </section>`;
+  }
+
+  const pct = p.session.pct;
+  const off = ARC_LEN * (1 - Math.min(1, pct / 100));
+  const spark = p.spark || [];
+  const peak = Math.max(1, ...spark);
+  const bars = spark
+    .map((v, i) => `<i class="${i === spark.length - 1 ? 'now' : ''}" style="height:${Math.max(2, (v / peak) * 26)}px"></i>`)
+    .join('');
+  const eta = p.estimating
+    ? 'กำลังเรียนรู้พฤติกรรมการใช้'
+    : p.etaMs
+    ? `เต็มใน ~${fmtCountdown(p.etaMs)}`
+    : 'อัตราคงที่';
+
+  return `
+  <section class="card" style="--accent:${accent}" data-id="${p.id}">
+    <div class="card-head">
+      <div class="mark">${monogram}</div>
+      <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
+      <button class="pill" data-act="plan">${p.planLabel}</button>
+    </div>
+
+    <div class="gauge">
+      <svg viewBox="0 0 186 118" aria-label="ใช้ไป ${Math.round(pct)} เปอร์เซ็นต์">
+        ${ticks()}
+        <path class="arc-bg" d="${ARC_D}" fill="none" stroke-width="9" stroke-linecap="round"/>
+        <path class="arc-fg" d="${ARC_D}" fill="none" stroke-width="9" stroke-linecap="round"
+              stroke-dasharray="${ARC_LEN.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"
+              style="${pct >= 90 ? 'stroke:var(--danger)' : pct >= 70 ? 'stroke:var(--warn)' : ''}"/>
+      </svg>
+      <div class="gauge-val">
+        <b>${Math.round(pct)}<i>%</i></b>
+        <span>บล็อก 5 ชั่วโมง</span>
+      </div>
+    </div>
+
+    <div class="rows">
+      <div class="row">
+        <div class="l"><span>บล็อกปัจจุบัน</span><em>${fmtTokens(p.session.tokens)} / ${fmtTokens(p.session.limit)}</em></div>
+        <div class="bar ${level(pct)}"><i style="width:${Math.min(100, pct)}%"></i></div>
+      </div>
+      <div class="row">
+        <div class="l"><span>รายสัปดาห์</span><em>${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}</em></div>
+        <div class="bar ${level(p.weekly.pct)}"><i style="width:${Math.min(100, p.weekly.pct)}%"></i></div>
+      </div>
+    </div>
+
+    <div class="spark">${bars}</div>
+
+    <div class="foot">
+      <span class="k">รีเซ็ตอีก</span>
+      <span class="t" data-reset="${p.session.resetAt || ''}">--:--</span>
+      <span class="k" style="margin-left:12px">${eta}</span>
+    </div>
+  </section>`;
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = state.providers.map(cardHtml).join('');
+  const t = new Date(state.updatedAt || Date.now());
+  document.getElementById('updated').textContent =
+    'อัปเดต ' + t.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const active = state.providers.filter((p) => p.state === 'ok').length;
+  document.getElementById('head-sub').textContent = `${active}/${state.providers.length} แหล่งข้อมูลพร้อมใช้งาน`;
+  tick();
+  paintTray();
+}
+
+/* นับถอยหลังทุกวินาที โดยไม่ต้องวาดการ์ดใหม่ */
+function tick() {
+  const now = Date.now();
+  document.querySelectorAll('[data-reset]').forEach((n) => {
+    const at = Number(n.dataset.reset);
+    n.textContent = at ? fmtCountdown(at - now) : '--:--';
+  });
+}
+setInterval(tick, 1000);
+
+/* ---------- ไอคอนถาดระบบพร้อมตัวเลข % ---------- */
+function paintTray() {
+  const top = state.providers.filter((p) => p.state === 'ok').sort((a, b) => b.session.pct - a.session.pct)[0];
+  const cv = document.getElementById('tray-canvas');
+  const g = cv.getContext('2d');
+  const pct = top ? Math.round(top.session.pct) : 0;
+  const color = !top ? '#7c8aa1' : pct >= 90 ? '#ff6b6b' : pct >= 70 ? '#f5c451' : top.accent;
+  g.clearRect(0, 0, 32, 32);
+  g.fillStyle = color;
+  g.beginPath();
+  g.roundRect(1, 1, 30, 30, 8);
+  g.fill();
+  g.fillStyle = '#0b0e13';
+  g.font = '600 ' + (pct >= 100 ? '15px' : '18px') + ' Bahnschrift, Segoe UI, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(String(Math.min(999, pct)), 16, 17);
+  window.api?.sendTrayIcon(cv.toDataURL('image/png'));
+}
+
+/* ---------- หน้าตั้งค่า ---------- */
+const PLANS = [
+  ['auto', 'อัตโนมัติ (P90)'],
+  ['pro', 'Pro'],
+  ['max5', 'Max 5x'],
+  ['max20', 'Max 20x'],
+  ['plus', 'Plus']
+];
+
+function renderSettings() {
+  const box = document.getElementById('prov-settings');
+  box.innerHTML = Object.values(config.providers)
+    .map(
+      (p) => `
+    <div class="pgroup" data-id="${p.id}">
+      <h3><b style="background:${p.accent}"></b>${p.name} <span style="color:var(--dim);font-weight:400">${p.subtitle}</span></h3>
+      <div class="field">
+        <label>แพลน / วิธีคิดลิมิต</label>
+        <select data-f="plan">${PLANS.map((x) => `<option value="${x[0]}" ${p.plan === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>
+      </div>
+      <div class="field">
+        <label>โฟลเดอร์ log</label>
+        <div class="path-row">
+          <input type="text" data-f="root" value="${(p.roots[0] || '').replace(/"/g, '&quot;')}">
+          <button class="btn" data-act="pick">เลือก…</button>
+        </div>
+      </div>
+      <label class="toggle"><input type="checkbox" data-f="enabled" ${p.enabled ? 'checked' : ''}><i class="sw"></i>เปิดใช้งานการ์ดนี้</label>
+    </div>`
+    )
+    .join('');
+}
+
+async function boot() {
+  config = await window.api.getConfig();
+  document.getElementById('t-taskbar').checked = config.showInTaskbar;
+  document.getElementById('t-top').checked = config.alwaysOnTop;
+  document.getElementById('t-boot').checked = config.startWithWindows;
+  document.getElementById('s-refresh').value = config.refreshSeconds;
+  document.getElementById('s-alert').value = config.alertThreshold;
+  document.getElementById('s-weekly').value = config.weeklyMode;
+  renderSettings();
+}
+
+/* ---------- เหตุการณ์ ---------- */
+document.addEventListener('click', async (e) => {
+  const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'settings') document.getElementById('sheet').classList.add('open');
+
+  if (act === 'plan') {
+    // คลิกป้ายแพลนเพื่อสลับไปแพลนถัดไปอย่างรวดเร็ว
+    const id = e.target.closest('.card').dataset.id;
+    const cur = config.providers[id].plan;
+    const i = PLANS.findIndex((x) => x[0] === cur);
+    const next = PLANS[(i + 1) % PLANS.length][0];
+    config = await window.api.setProvider(id, { plan: next });
+    renderSettings();
+  }
+
+  if (act === 'pick') {
+    const group = e.target.closest('.pgroup');
+    const dir = await window.api.pickFolder();
+    if (dir) {
+      group.querySelector('[data-f=root]').value = dir;
+      config = await window.api.setProvider(group.dataset.id, { roots: [dir] });
+    }
+  }
+});
+
+document.getElementById('b-set').onclick = () => document.getElementById('sheet').classList.add('open');
+document.getElementById('s-close').onclick = () => document.getElementById('sheet').classList.remove('open');
+document.getElementById('sheet').onclick = (e) => {
+  if (e.target.id === 'sheet') e.target.classList.remove('open');
+};
+document.getElementById('b-refresh').onclick = () => window.api.refresh();
+document.getElementById('b-csv').onclick = () => window.api.exportCsv();
+
+document.getElementById('w-min').onclick = () => window.api.window('minimize');
+document.getElementById('w-max').onclick = () => window.api.window('maximize');
+document.getElementById('w-close').onclick = () => window.api.window('close');
+document.getElementById('w-mini').onclick = () => window.api.window('mini');
+
+const setCfg = async (patch) => (config = await window.api.setConfig(patch));
+document.getElementById('t-taskbar').onchange = (e) => setCfg({ showInTaskbar: e.target.checked });
+document.getElementById('t-top').onchange = (e) => setCfg({ alwaysOnTop: e.target.checked });
+document.getElementById('t-boot').onchange = (e) => setCfg({ startWithWindows: e.target.checked });
+document.getElementById('s-refresh').onchange = (e) => setCfg({ refreshSeconds: Number(e.target.value) });
+document.getElementById('s-alert').onchange = (e) => setCfg({ alertThreshold: Number(e.target.value) });
+document.getElementById('s-weekly').onchange = (e) => setCfg({ weeklyMode: e.target.value });
+
+document.addEventListener('change', async (e) => {
+  const group = e.target.closest('.pgroup');
+  if (!group) return;
+  const f = e.target.dataset.f;
+  if (f === 'plan') config = await window.api.setProvider(group.dataset.id, { plan: e.target.value });
+  if (f === 'enabled') config = await window.api.setProvider(group.dataset.id, { enabled: e.target.checked });
+  if (f === 'root') config = await window.api.setProvider(group.dataset.id, { roots: [e.target.value] });
+});
+
+window.api.onUsage((d) => {
+  state = d;
+  render();
+});
+window.api.onMiniMode((on) => document.body.classList.toggle('mini', on));
+
+boot();
+</script>
+</body></html>
