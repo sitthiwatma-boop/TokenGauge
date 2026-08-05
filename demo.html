@@ -642,7 +642,11 @@ function cardHtml(p) {
   const bars = spark
     .map((v, i) => `<i class="${i === spark.length - 1 ? 'now' : ''}" style="height:${Math.max(2, (v / peak) * 26)}px"></i>`)
     .join('');
-  const eta = p.estimating
+  const eta = p.manual
+    ? 'ตามหน้าเว็บผู้ให้บริการ'
+    : p.live && pct === 0 && !p.session.tokens
+    ? 'โควตาเต็ม ยังไม่ใช้รอบนี้ ✦'
+    : p.estimating
     ? 'กำลังเรียนรู้พฤติกรรมการใช้'
     : p.etaMs
     ? `เต็มใน ~${fmtCountdown(p.etaMs)}`
