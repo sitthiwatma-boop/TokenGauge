@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('api', {
   setProvider: (id, patch) => ipcRenderer.invoke('set-provider', { id, patch }),
   refresh: () => ipcRenderer.invoke('refresh'),
   calibrate: (id, payload) => ipcRenderer.invoke('calibrate', { id, ...payload }),
+  getHistory: () => ipcRenderer.invoke('get-history'),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   exportCsv: () => ipcRenderer.invoke('export-csv'),
   window: (action) => ipcRenderer.send('window', action),

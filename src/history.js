@@ -72,6 +72,11 @@ function sparkFrom(app, id, now = Date.now()) {
   return Array.from({ length: 24 }, (_, i) => slot[start + i * 3600000] || 0);
 }
 
+/** ข้อมูลรายชั่วโมงทั้งหมด — ให้หน้าประวัติเอาไปวาดกราฟ */
+function slots(app) {
+  return load(app).providers;
+}
+
 /** ใช้ในเทสต์ — ล้าง state ใน memory */
 function _reset() {
   cache = null;
@@ -79,4 +84,4 @@ function _reset() {
   lastWrite = 0;
 }
 
-module.exports = { record, flush, sparkFrom, _reset };
+module.exports = { record, flush, sparkFrom, slots, _reset };

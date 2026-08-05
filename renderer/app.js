@@ -234,6 +234,109 @@ function paintTray() {
   window.api?.sendTrayIcon(cv.toDataURL('image/png'));
 }
 
+/* ---------- หน้าประวัติ: กราฟแท่งซ้อน SVG ล้วน ---------- */
+let curView = 'grid';
+let hMode = 'daily';
+let historyData = null;
+
+async function openHistory() {
+  historyData = await window.api.getHistory();
+  drawHistory();
+}
+
+/** จัดข้อมูลรายชั่วโมงลงช่องตามโหมด (รายวัน 30 ช่อง / รายชั่วโมง 48 ช่อง) */
+function seriesFor(mode) {
+  const slots = historyData.slots || {};
+  const now = Date.now();
+  const bins = [];
+  const index = new Map();
+  if (mode === 'hourly') {
+    const start = Math.floor(now / 3600000) * 3600000 - 47 * 3600000;
+    for (let i = 0; i < 48; i++) {
+      const t = start + i * 3600000;
+      const b = { label: `${String(new Date(t).getHours()).padStart(2, '0')}:00`, per: {} };
+      bins.push(b);
+      index.set(t, b);
+    }
+  } else {
+    const d0 = new Date(now);
+    d0.setHours(0, 0, 0, 0);
+    for (let i = 29; i >= 0; i--) {
+      const t = d0.getTime() - i * 86400000;
+      const b = { label: new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }), per: {} };
+      bins.push(b);
+      index.set(t, b);
+    }
+  }
+  for (const p of historyData.providers) {
+    const slot = slots[p.id] || {};
+    for (const [k, v] of Object.entries(slot)) {
+      const ms = Number(k);
+      let key = ms;
+      if (mode !== 'hourly') {
+        const d = new Date(ms);
+        d.setHours(0, 0, 0, 0);
+        key = d.getTime();
+      }
+      const b = index.get(key);
+      if (b) b.per[p.id] = (b.per[p.id] || 0) + v;
+    }
+  }
+  return bins;
+}
+
+function drawHistory() {
+  if (!historyData) return;
+  const provs = historyData.providers;
+  const bins = seriesFor(hMode);
+  const W = 720, H = 280, padL = 48, padR = 8, padT = 12, padB = 26;
+  const plotH = H - padT - padB;
+  const max = Math.max(1, ...bins.map((b) => provs.reduce((s, p) => s + (b.per[p.id] || 0), 0)));
+  const iw = (W - padL - padR) / bins.length;
+  const bw = Math.max(2, iw * 0.66);
+  let out = '';
+  for (const f of [0, 0.5, 1]) {
+    const y = padT + plotH * (1 - f);
+    out += `<line class="h-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}"/>`;
+    out += `<text class="h-y" x="${padL - 6}" y="${(y + 3).toFixed(1)}">${fmtTokens(max * f)}</text>`;
+  }
+  const labelEvery = hMode === 'hourly' ? 6 : 5;
+  bins.forEach((b, i) => {
+    const x = padL + i * iw + (iw - bw) / 2;
+    let y = H - padB;
+    for (const p of provs) {
+      const v = b.per[p.id] || 0;
+      const h = plotH * (v / max);
+      if (h < 0.5) continue;
+      y -= h;
+      out += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${p.accent}" rx="1.5" opacity="0.92"><title>${b.label} — ${p.name}: ${fmtTokens(v)} token</title></rect>`;
+    }
+    if (i % labelEvery === 0) {
+      out += `<text class="h-x" x="${(padL + i * iw + iw / 2).toFixed(1)}" y="${H - 8}">${b.label}</text>`;
+    }
+  });
+  document.getElementById('h-chart').innerHTML = out;
+  document.getElementById('h-legend').innerHTML = provs
+    .map((p) => `<span><b style="background:${p.accent}"></b>${p.name}</span>`)
+    .join('');
+}
+
+function switchView(v) {
+  curView = v;
+  document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x.dataset.view === v));
+  document.getElementById('grid').hidden = v !== 'grid';
+  document.getElementById('history').hidden = v !== 'history';
+  if (v === 'history') openHistory();
+}
+document.querySelectorAll('.tab').forEach((b) => (b.onclick = () => switchView(b.dataset.view)));
+document.querySelectorAll('.seg-b').forEach((b) => {
+  b.onclick = () => {
+    hMode = b.dataset.mode;
+    document.querySelectorAll('.seg-b').forEach((x) => x.classList.toggle('active', x === b));
+    drawHistory();
+  };
+});
+
 /* ---------- หน้าตั้งค่า ---------- */
 const PLANS = [
   ['auto', 'อัตโนมัติ (P90)'],
@@ -434,10 +537,12 @@ document.addEventListener('change', async (e) => {
 window.api.onUsage((d) => {
   state = d;
   render();
+  if (curView === 'history') openHistory(); // กราฟตามข้อมูลใหม่ทุกรอบรีเฟรช
 });
 window.api.onMiniMode((on) => {
   document.body.classList.toggle('mini', on);
   document.getElementById('t-mini').checked = on;
+  if (on) switchView('grid'); // โหมดมินิแสดงเฉพาะการ์ด
 });
 
 boot();

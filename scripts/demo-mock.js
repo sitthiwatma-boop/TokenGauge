@@ -31,6 +31,12 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
   if(cal.weekly){m.weekly.limit=cal.weekly;m.weekly.pct=100*m.weekly.tokens/cal.weekly;}
   _cb&&_cb(MOCK);return{ok:true,calibration:cal,config:CFG};},
  refresh:async()=>{MOCK.updatedAt=Date.now();_cb&&_cb(MOCK);},
+ getHistory:async()=>{const slots={};const hn=Math.floor(Date.now()/3600e3)*3600e3;
+  for(const [id,seed,amp] of [['claude',1,90000],['chatgpt',2,40000],['grok',3,15000]]){
+   const s={};for(let i=0;i<720;i++){const t=hn-i*3600e3;const hr=new Date(t).getHours();
+    if(hr>=8&&hr<=23){const v=Math.round(Math.max(0,(Math.sin(i/9+seed)+0.7))*amp*Math.random());if(v>500)s[t]=v;}}
+   slots[id]=s;}
+  return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'grok',name:'Grok',accent:'#A78BFA'}],slots};},
  pickFolder:async()=>null,exportCsv:async()=>null,
  window:(a)=>{if(a==='mini')window.api.setMini(!document.body.classList.contains('mini'));},
  sendTrayIcon:()=>{},

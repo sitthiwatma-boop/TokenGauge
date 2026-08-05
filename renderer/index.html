@@ -23,8 +23,28 @@
   <div class="head">
     <h1>ภาพรวมการใช้งาน</h1>
     <div class="sub" id="head-sub"></div>
+    <div class="tabs">
+      <button class="tab active" data-view="grid">ภาพรวม</button>
+      <button class="tab" data-view="history">ประวัติ</button>
+    </div>
   </div>
+
   <div class="grid" id="grid"></div>
+
+  <section id="history" hidden>
+    <div class="h-controls">
+      <div class="seg">
+        <button class="seg-b active" data-mode="daily">รายวัน · 30 วัน</button>
+        <button class="seg-b" data-mode="hourly">รายชั่วโมง · 48 ชม.</button>
+      </div>
+      <div class="legend" id="h-legend"></div>
+    </div>
+    <div class="chart-wrap">
+      <svg id="h-chart" viewBox="0 0 720 280" role="img" aria-label="กราฟการใช้งานย้อนหลัง"></svg>
+    </div>
+    <p class="h-note">ข้อมูลจาก history.json ที่แอปเก็บเอง (ย้อนหลังสูงสุด 90 วัน) —
+    ชี้เมาส์ที่แท่งเพื่อดูตัวเลข</p>
+  </section>
 </main>
 
 <div class="bottom">

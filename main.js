@@ -300,6 +300,14 @@ ipcMain.handle('set-provider', (_e, { id, patch }) => {
 
 ipcMain.handle('refresh', () => (pushUsage(), true));
 
+// ข้อมูลสำหรับหน้าประวัติ — สรุปรายชั่วโมงจาก history.json
+ipcMain.handle('get-history', () => ({
+  providers: Object.values(config.providers)
+    .filter((p) => p.enabled)
+    .map((p) => ({ id: p.id, name: p.name, accent: p.accent })),
+  slots: history.slots(app)
+}));
+
 // ปรับเทียบลิมิตกับ % จริงจากหน้า usage ของผู้ให้บริการ
 // ผู้ใช้กรอก % ที่เห็นจริง แล้วคำนวณลิมิตย้อนกลับ: limit = tokens ÷ (pct/100)
 ipcMain.handle('calibrate', (_e, { id, sessionPct, weeklyPct }) => {
