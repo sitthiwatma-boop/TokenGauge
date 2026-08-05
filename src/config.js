@@ -71,6 +71,9 @@ const PLAN_PRESETS = {
 
 const DEFAULTS = {
   refreshSeconds: 60,
+  // ราคาโดยประมาณ "บาทต่อ 1 ล้าน token (ถ่วงน้ำหนักแคชแล้ว)" — เป็นค่าเดาหยาบ
+  // ให้พอเห็นภาพ ไม่ใช่ยอดเรียกเก็บจริง แก้ตัวเลขเองได้ใน config.json
+  pricing: { claude: 150, chatgpt: 100, grok: 80 },
   alertThreshold: 90,
   showInTaskbar: true,
   alwaysOnTop: false,

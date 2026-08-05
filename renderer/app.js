@@ -180,6 +180,10 @@ function cardHtml(p) {
         <div class="l"><span>รายสัปดาห์</span><em>${p.manual ? Math.round(p.weekly.pct) + '% จากเว็บ' : `${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}`}</em></div>
         <div class="bar ${level(p.weekly.pct)}"><i style="width:${Math.min(100, p.weekly.pct)}%"></i></div>
       </div>
+      ${p.monthCostTHB != null ? `
+      <div class="row cost">
+        <div class="l"><span>เดือนนี้ ≈ ค่าใช้จ่าย</span><em title="ประมาณจากราคาใน config ไม่ใช่ยอดเรียกเก็บจริง">${fmtTokens(p.monthTokens)} ≈ ฿${p.monthCostTHB >= 100 ? Math.round(p.monthCostTHB).toLocaleString() : p.monthCostTHB.toFixed(2)}</em></div>
+      </div>` : ''}
     </div>
 
     <div class="spark">${bars}</div>

@@ -335,6 +335,10 @@ body.mini .live-dot { display: none; }
 }
 .bar.warn i { background: var(--warn); }
 .bar.danger i { background: var(--danger); }
+.row.cost .l { margin-bottom: 0; }
+.row.cost .l span { font-size: 11px; color: var(--dim); }
+.row.cost .l em { color: var(--muted); }
+body.mini .row.cost { display: none; }
 
 /* กราฟ 24 ชม. */
 .spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; margin-top: 14px; }
@@ -605,6 +609,7 @@ const now=Date.now();
 const MOCK={updatedAt:now,providers:[
  {id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',plan:'max5',planLabel:'Max 5x',ok:true,state:'ok',calibrated:true,live:true,
   session:{tokens:139000,limit:993000,pct:14,resetAt:now+2*3600e3},weekly:{tokens:13960000,limit:22500000,pct:62},
+  monthTokens:41000000,monthCostTHB:6150,
   burnPerHour:15400,etaMs:9.5*3600e3,spark:rnd(9000,0)},
  {id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',plan:'plus',planLabel:'Plus',ok:true,state:'ok',live:true,
   session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3},weekly:{tokens:388000,limit:720000,pct:54},
@@ -826,6 +831,10 @@ function cardHtml(p) {
         <div class="l"><span>รายสัปดาห์</span><em>${p.manual ? Math.round(p.weekly.pct) + '% จากเว็บ' : `${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}`}</em></div>
         <div class="bar ${level(p.weekly.pct)}"><i style="width:${Math.min(100, p.weekly.pct)}%"></i></div>
       </div>
+      ${p.monthCostTHB != null ? `
+      <div class="row cost">
+        <div class="l"><span>เดือนนี้ ≈ ค่าใช้จ่าย</span><em title="ประมาณจากราคาใน config ไม่ใช่ยอดเรียกเก็บจริง">${fmtTokens(p.monthTokens)} ≈ ฿${p.monthCostTHB >= 100 ? Math.round(p.monthCostTHB).toLocaleString() : p.monthCostTHB.toFixed(2)}</em></div>
+      </div>` : ''}
     </div>
 
     <div class="spark">${bars}</div>

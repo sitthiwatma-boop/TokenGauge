@@ -327,6 +327,10 @@ body.mini .live-dot { display: none; }
 }
 .bar.warn i { background: var(--warn); }
 .bar.danger i { background: var(--danger); }
+.row.cost .l { margin-bottom: 0; }
+.row.cost .l span { font-size: 11px; color: var(--dim); }
+.row.cost .l em { color: var(--muted); }
+body.mini .row.cost { display: none; }
 
 /* กราฟ 24 ชม. */
 .spark { display: flex; align-items: flex-end; gap: 2px; height: 26px; margin-top: 14px; }

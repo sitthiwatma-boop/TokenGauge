@@ -6,6 +6,7 @@ const now=Date.now();
 const MOCK={updatedAt:now,providers:[
  {id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',plan:'max5',planLabel:'Max 5x',ok:true,state:'ok',calibrated:true,live:true,
   session:{tokens:139000,limit:993000,pct:14,resetAt:now+2*3600e3},weekly:{tokens:13960000,limit:22500000,pct:62},
+  monthTokens:41000000,monthCostTHB:6150,
   burnPerHour:15400,etaMs:9.5*3600e3,spark:rnd(9000,0)},
  {id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',plan:'plus',planLabel:'Plus',ok:true,state:'ok',live:true,
   session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3},weekly:{tokens:388000,limit:720000,pct:54},

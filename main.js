@@ -228,11 +228,23 @@ async function pushUsage() {
   }
   // บันทึกประวัติรายชั่วโมง แล้วให้กราฟ 24 ชม. อ่านจากประวัติแทน — ข้อมูลไม่หายแม้ log ถูกลบ
   history.record(app, data.providers);
+  const slots = history.slots(app);
+  const m0 = new Date();
+  m0.setDate(1);
+  m0.setHours(0, 0, 0, 0);
   for (const p of data.providers) {
     if (!p.ok) continue;
     const bins = history.sparkFrom(app, p.id);
     if (bins) p.spark = bins;
     delete p.hourly; // ใช้ภายใน ไม่ต้องส่งไป renderer
+    // ยอดสะสมเดือนนี้ + ค่าใช้จ่ายโดยประมาณ (บาท) ตามตารางราคาใน config
+    let mt = 0;
+    for (const [k, v] of Object.entries(slots[p.id] || {})) {
+      if (Number(k) >= m0.getTime()) mt += v;
+    }
+    p.monthTokens = mt;
+    const rate = Number(config.pricing?.[p.id]);
+    if (rate > 0) p.monthCostTHB = (mt / 1e6) * rate;
   }
   if (!win || win.isDestroyed()) return;
   win.webContents.send('usage', data);
