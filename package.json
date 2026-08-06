@@ -37,8 +37,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "YOUR-GITHUB-USERNAME",
-        "repo": "tokengauge"
+        "owner": "sitthiwatma-boop",
+        "repo": "TokenGauge"
       }
     ],
     "nsis": {

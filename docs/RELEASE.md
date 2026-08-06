@@ -64,15 +64,20 @@ npm run pack    # ได้เฉพาะ portable .exe เร็วกว่�
 privilege is not held by the client` — เพราะ electron-builder ต้องแตกไฟล์
 เครื่องมือที่ใช้ symbolic link ซึ่ง Windows ไม่อนุญาตโดยค่าเริ่มต้น
 
-**วิธีแก้ถาวร (แนะนำ):** เปิด Developer Mode —
-Settings → System → For developers → เปิด **Developer Mode** แล้ว build ใหม่
-
-**วิธีแก้เฉพาะหน้า:** ข้ามขั้นตอนแก้ไข exe (ไอคอนใน exe จะเป็นของ Electron แทน):
+**วิธีแก้ที่ใช้จริงแล้ว (6 ส.ค. 2026 — build เต็มผ่านโดยไม่ต้องเปิด Developer Mode):**
+แตกไฟล์เครื่องมือลง cache เอง โดยข้าม symlink ฝั่ง macOS ที่ Windows ไม่ใช้:
 ```powershell
-npx electron-builder --win portable --config.win.signAndEditExecutable=false
+$cache = "$env:LOCALAPPDATA\electron-builder\Cache\winCodeSign"
+$dest  = "$cache\winCodeSign-2.6.0"
+New-Item -ItemType Directory -Force $dest | Out-Null
+Invoke-WebRequest "https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-2.6.0/winCodeSign-2.6.0.7z" -OutFile "$cache\winCodeSign-2.6.0.7z"
+& "node_modules\7zip-bin\win\x64\7za.exe" x -y -bd "$cache\winCodeSign-2.6.0.7z" "-o$dest"
 ```
-ทดสอบแล้วได้ `dist/TokenGauge 1.0.0.exe` สำเร็จด้วยวิธีนี้ —
-แต่ก่อนปล่อยจริงให้เปิด Developer Mode แล้ว build แบบเต็มเพื่อให้ได้ไอคอนถูกต้อง
+(7za จะฟ้อง error 2 บรรทัดเรื่อง symlink ของ .dylib — ไม่เป็นไร ไฟล์ที่เหลือครบ)
+ทำครั้งเดียว หลังจากนั้น `npm run build` ผ่านตลอด ได้ไอคอนถูกต้องครบ
+
+**ทางเลือกอื่น:** เปิด Developer Mode (Settings → System → For developers)
+แล้ว build ใหม่ — ได้ผลเหมือนกันโดยไม่ต้องแตกไฟล์เอง
 
 ## สิ่งที่ต้องรู้
 
