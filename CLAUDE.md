@@ -27,11 +27,15 @@
 
    > **ข้อยกเว้นที่ผู้ใช้อนุมัติแล้ว (ส.ค. 2026) มี 2 อย่างเท่านั้น:**
    >
-   > 1) `liveUsage` ใน `src/liveusage.js` — opt-in (ปิดเป็นค่าเริ่มต้น) ครอบคลุม 2 เจ้า:
+   > 1) live usage — opt-in ทุกตัว (ปิดเป็นค่าเริ่มต้น) ครอบคลุม 3 เจ้า:
    > Claude อ่าน `accessToken` จาก `~/.claude/.credentials.json` → `api.anthropic.com/api/oauth/usage`
    > และ ChatGPT อ่าน `tokens.access_token` จาก `~/.codex/auth.json` → `chatgpt.com/backend-api/*`
-   > (ทดลอง — endpoint ไม่ทางการ) แต่ละ token ส่งหาเซิร์ฟเวอร์ของเจ้าของ token เท่านั้น
-   > ห้าม log/เก็บ/ส่งไปที่อื่นเด็ดขาด
+   > (ทดลอง — endpoint ไม่ทางการ) ทั้งสองอยู่ใน `src/liveusage.js`
+   > ส่วน Grok และ ChatGPT ยังมีโหมด `liveWeb` (`src/webquota.js`): ใช้ session ที่ผู้ใช้
+   > ล็อกอินเว็บ**ในหน้าต่างของแอปเอง** (partition `persist:grokweb` / `persist:chatgptweb`)
+   > แอปเรียนรู้ endpoint จาก network ของหน้าต่างล็อกอินเฉพาะโดเมนเจ้านั้น แล้ว replay เอง
+   > (ทดลอง — endpoint ไม่ทางการ) **ห้ามแตะ cookie ของเบราว์เซอร์ภายนอกเด็ดขาด**
+   > แต่ละ credential ส่งหาเซิร์ฟเวอร์ของเจ้าของมันเท่านั้น ห้าม log/เก็บ/ส่งไปที่อื่นเด็ดขาด
    >
    > 2) `autoUpdate` — เช็คเวอร์ชันใหม่จาก GitHub Releases ของโปรเจกต์นี้เอง
    > ทำงานเฉพาะตัวที่แพ็กเป็น .exe แล้ว ปิดได้ด้วย `autoUpdate: false` ใน config
@@ -54,6 +58,12 @@ src/usage.js     หัวใจ — เดินหาไฟล์ .jsonl, แ�
 src/liveusage.js % ทางการ 2 ทาง: Claude ผ่าน API (opt-in, ดูข้อยกเว้นในกฎข้อ 2)
                  และ ChatGPT จาก rate_limits ใน log ของ Codex เอง (ในเครื่องล้วน ไม่ต่อเน็ต
                  อ่านเฉพาะท้ายไฟล์เพราะ session log ใหญ่ได้หลายร้อย MB)
+                 + ตัวแปลงคำตอบเว็บ parseGrokText/parseGrokRateLimits (ฟังก์ชันล้วน เทสต์ได้ด้วย node
+                 อ่านได้ทั้ง JSON, payload แบบ RSC และ rate_limits แบบ ChatGPT)
+src/webquota.js  % สดจากเว็บของ Grok/ChatGPT (opt-in) — ล็อกอินในหน้าต่างของแอปเอง
+                 cookie อยู่ใน partition ของแอปเท่านั้น ไม่แตะเบราว์เซอร์ภายนอก
+                 เรียนรู้ endpoint จากหน้า usage ที่ผู้ใช้เปิดในหน้าต่างล็อกอิน แล้ว replay เอง
+                 (เก็บใน providers.<id>.liveEndpoint)
 src/history.js   เก็บสรุปรายชั่วโมงลง history.json ใน userData 90 วัน
                  กราฟ 24 ชม. อ่านจากไฟล์นี้ — ประวัติไม่หายแม้ log ต้นทางถูกลบ
                  เขียนไฟล์เฉพาะเมื่อค่าเปลี่ยนและเว้น ≥5 นาที
@@ -161,6 +171,10 @@ mock ของ `window.api` อยู่ที่ `scripts/demo-mock.js` (ส่
   รันจากเทอร์มินัลปกติหรือกด F5 ไม่มีปัญหานี้
 - `win.on('close')` ถูกดักไว้ให้ซ่อนลง Tray แทนการปิด ถ้าจะเพิ่มปุ่มออกจริง ๆ
   ต้องตั้ง `app.isQuitting = true` ก่อนเรียก `app.quit()`
+- **"เปิดพร้อม Windows" ต้องลงทะเบียนเฉพาะตัวที่แพ็กแล้ว** (`app.isPackaged`) —
+  ตอนรันจากซอร์ส `setLoginItemSettings` จะชี้ไปที่ `electron.exe` เปล่า ๆ ใน node_modules
+  ทำให้ Windows เปิดหน้า welcome ของ Electron ทุกครั้งที่ล็อกอิน (เคยเกิดแล้ว)
+  ใช้ผ่าน `syncLoginItem()` ใน main.js เท่านั้น
 - `nativeImage.createFromDataURL` รับ PNG dataURL เท่านั้น ใช้ SVG ไม่ได้
 - Content-Security-Policy ใน `index.html` ห้าม inline script — ถ้าเพิ่ม script ต้องแยกไฟล์
 - ฟอนต์ Bahnschrift มีเฉพาะ Windows 10 ขึ้นไป มี fallback ไว้แล้ว อย่าลบ

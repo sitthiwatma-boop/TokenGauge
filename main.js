@@ -5,6 +5,7 @@ const fs = require('fs');
 const cfgStore = require('./src/config');
 const usage = require('./src/usage');
 const liveusage = require('./src/liveusage');
+const webquota = require('./src/webquota');
 const history = require('./src/history');
 const report = require('./src/report');
 
@@ -202,11 +203,37 @@ async function pushUsage() {
       }
     }
   }
-  // ChatGPT: ลอง API โดยตรงก่อน (opt-in) → ถอยไป rate_limits ใน log ของ Codex
+  // โควตาสดจากเว็บ (Grok/ChatGPT) — session ที่ล็อกอินในหน้าต่างของแอปเอง (opt-in ทดลอง)
+  // token ที่นับได้ในเครื่องเป็นของ CLI คนละบัญชี/คนละเรื่องกับโควตาเว็บ —
+  // ตั้งเฉพาะ % ห้ามคำนวณลิมิตย้อนกลับแบบ applyLive
+  for (const id of ['grok', 'chatgpt']) {
+    const cp = config.providers[id];
+    const p = data.providers.find((x) => x.id === id);
+    if (!cp?.enabled || !cp.liveWeb || !p || !p.ok) continue;
+    try {
+      const live = await webquota.fetchLive(id);
+      if (live.session) {
+        p.session.pct = live.session.pct;
+        if (live.session.resetAt) p.session.resetAt = live.session.resetAt;
+      }
+      if (live.weekly) {
+        p.weekly.pct = live.weekly.pct;
+        if (live.weekly.resetAt) p.weekly.resetAt = live.weekly.resetAt;
+        // ฝั่งสดบางทีไม่บอกเวลารีเซ็ต — ยืมจากค่าปักหมุดที่ยังไม่หมดรอบมาโชว์นับถอยหลัง
+        else if (cp.manual?.resetAt > Date.now()) p.weekly.resetAt = cp.manual.resetAt;
+      }
+      p.live = true;
+      p.webGauge = !!live.weekly; // ให้หน้าปัดหลักโชว์รอบจากเว็บแบบเดียวกับปักหมุด
+      delete p.liveError;
+    } catch (err) {
+      p.liveError = String(err.message || err);
+    }
+  }
+  // ChatGPT: ถ้าเว็บสดไม่ได้ผล ลอง API โดยตรง (opt-in) → ถอยไป rate_limits ใน log ของ Codex
   {
     const cp = config.providers.chatgpt;
     const p = data.providers.find((x) => x.id === 'chatgpt');
-    if (cp?.enabled && p && p.ok) {
+    if (cp?.enabled && p && p.ok && !p.live) {
       let live = null;
       if (cp.liveUsage) {
         try {
@@ -226,10 +253,11 @@ async function pushUsage() {
       }
     }
   }
-  // ปักหมุดด้วยมือ (เช่น Grok จากเว็บ) — ใช้เฉพาะการ์ดที่ไม่มีแหล่งข้อมูลสด
+  // ปักหมุดด้วยมือ (เช่น Grok จากเว็บ) — ใช้เมื่อไม่มีข้อมูลสด "รายสัปดาห์"
+  // (Grok สดอาจได้แค่โควตาแชท — รายสัปดาห์ที่ปักไว้ยังต้องแสดง อย่าให้ 0% ทับ 63% แบบที่เคยพลาด)
   for (const p of data.providers) {
     const m = config.providers[p.id]?.manual;
-    if (!m || p.live || !p.ok) continue;
+    if (!m || (p.live && p.webGauge) || !p.ok) continue;
     if (!(m.resetAt > Date.now())) {
       // รอบที่ปักไว้หมดแล้ว — เตือนครั้งเดียวให้ไปปักใหม่ แล้วกลับไปใช้ค่าประมาณ
       if (!m.notified) {
@@ -248,7 +276,10 @@ async function pushUsage() {
     p.weekly.pct = Math.max(0, Math.min(999, Number(m.pct) || 0));
     p.weekly.resetAt = m.resetAt;
     p.manual = true;
-    delete p.liveError; // มีค่าปักหมุดใช้อยู่ ป้ายเตือน API ไม่จำเป็น
+    p.webGauge = true; // หน้าปัดหลักโชว์ % รายสัปดาห์ที่ปักไว้ แม้จะมีข้อมูลสดฝั่งแชท
+    // มีค่าปักหมุดใช้อยู่ ป้ายเตือน API ไม่จำเป็น — ยกเว้นผู้ใช้เปิดโหมดสดไว้
+    // แล้วมันล้มเหลว ต้องเห็นสาเหตุ ไม่ใช่เงียบหาย (เคยไล่บั๊กตาบอดมาแล้ว)
+    if (!config.providers[p.id]?.liveWeb) delete p.liveError;
   }
   // บันทึกประวัติรายชั่วโมง แล้วให้กราฟ 24 ชม. อ่านจากประวัติแทน — ข้อมูลไม่หายแม้ log ถูกลบ
   history.record(app, data.providers);
@@ -392,6 +423,15 @@ function restartTimer() {
 
 /* ---------- IPC ---------- */
 
+// ลงทะเบียนเปิดพร้อม Windows เฉพาะตัวที่แพ็กเป็น .exe แล้วเท่านั้น
+// ตอนรันจากซอร์ส execPath คือ electron.exe เปล่า ๆ ใน node_modules —
+// ถ้าลงทะเบียนไป Windows จะเปิดหน้า welcome ของ Electron ทุกครั้งที่ล็อกอิน
+function syncLoginItem() {
+  app.setLoginItemSettings({
+    openAtLogin: app.isPackaged && !!config.startWithWindows,
+  });
+}
+
 ipcMain.handle('get-config', () => config);
 
 ipcMain.handle('set-config', (_e, patch) => {
@@ -403,7 +443,7 @@ ipcMain.handle('set-config', (_e, patch) => {
     if (miniMode && 'miniOpacity' in patch) win.setOpacity(Number(config.miniOpacity) || 1);
   }
   if ('miniOpacity' in patch) rebuildTrayMenu(); // ให้ radio ใน tray ตรงกับค่าล่าสุด
-  app.setLoginItemSettings({ openAtLogin: !!config.startWithWindows });
+  syncLoginItem();
   restartTimer();
   pushUsage();
   return config;
@@ -451,6 +491,23 @@ ipcMain.handle('calibrate', (_e, { id, sessionPct, weeklyPct }) => {
   cfgStore.save(app, config);
   pushUsage();
   return { ok: true, calibration: cal, config };
+});
+
+// โควตาสดจากเว็บ (Grok/ChatGPT) — ล็อกอินในหน้าต่างของแอป (ดู src/webquota.js)
+ipcMain.handle('web-login', async (_e, id) => {
+  await webquota.openLogin(id, win);
+  pushUsage();
+  return webquota.hasSession(id);
+});
+ipcMain.handle('web-logout', async (_e, id) => {
+  await webquota.logout(id);
+  pushUsage();
+  return true;
+});
+ipcMain.handle('web-test', async (_e, id) => {
+  const r = await webquota.testLive(id);
+  pushUsage();
+  return r;
 });
 
 ipcMain.handle('pick-folder', async () => {
@@ -512,7 +569,16 @@ if (!single) {
 
   app.whenReady().then(() => {
     config = cfgStore.load(app);
-    app.setLoginItemSettings({ openAtLogin: !!config.startWithWindows });
+    // endpoint หน้า usage ที่เคยเรียนรู้ไว้ + จำตัวใหม่เมื่อเจอ (ดู src/webquota.js)
+    for (const id of ['grok', 'chatgpt']) {
+      webquota.setDiscovered(id, config.providers[id]?.liveEndpoint || null);
+    }
+    webquota.setOnDiscover((id, ep) => {
+      config.providers[id] = { ...config.providers[id], liveEndpoint: ep };
+      cfgStore.save(app, config);
+      pushUsage();
+    });
+    syncLoginItem();
     createWindow();
     createTray();
     restartTimer();

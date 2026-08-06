@@ -39,6 +39,8 @@ const DEFAULT_PROVIDERS = {
     plan: 'auto',
     calibration: null,
     liveUsage: false, // opt-in ทดลอง: ถาม % ทางการจาก backend ของ ChatGPT ด้วย token ของ Codex
+    liveWeb: false, // opt-in ทดลอง: % สดจากเว็บผ่าน session ที่ล็อกอินในแอปเอง (src/webquota.js)
+    manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ
     windows: { session: true, weekly: true }
   },
   grok: {
@@ -56,7 +58,8 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'auto',
     calibration: null,
-    manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ (Grok ไม่มีช่องทางดึงอัตโนมัติ)
+    manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ (ใช้เมื่อไม่เปิด liveWeb)
+    liveWeb: false, // opt-in ทดลอง: % สดจากเว็บผ่าน session ที่ล็อกอินในแอปเอง (src/webquota.js)
     windows: { session: true, weekly: true }
   }
 };

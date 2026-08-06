@@ -39,6 +39,8 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
    slots[id]=s;}
   return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'grok',name:'Grok',accent:'#A78BFA'}],slots};},
  pickFolder:async()=>null,exportCsv:async()=>null,exportReport:async()=>null,
+ webLogin:async()=>true,webLogout:async()=>true,
+ webTest:async()=>({ok:false,error:'โหมดตัวอย่างในเบราว์เซอร์ ไม่ต่อเน็ตจริง'}),
  window:(a)=>{if(a==='mini')window.api.setMini(!document.body.classList.contains('mini'));},
  sendTrayIcon:()=>{},
  setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},

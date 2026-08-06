@@ -643,6 +643,8 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
    slots[id]=s;}
   return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'grok',name:'Grok',accent:'#A78BFA'}],slots};},
  pickFolder:async()=>null,exportCsv:async()=>null,exportReport:async()=>null,
+ webLogin:async()=>true,webLogout:async()=>true,
+ webTest:async()=>({ok:false,error:'โหมดตัวอย่างในเบราว์เซอร์ ไม่ต่อเน็ตจริง'}),
  window:(a)=>{if(a==='mini')window.api.setMini(!document.body.classList.contains('mini'));},
  sendTrayIcon:()=>{},
  setMini:(on)=>{document.body.classList.toggle('mini',!!on);const t=document.getElementById('t-mini');if(t)t.checked=!!on;},
@@ -770,16 +772,17 @@ function cardHtml(p) {
     </section>`;
   }
 
-  // การ์ดที่ปักหมุดด้วยมือ (เช่น Grok) ให้เกจหลักโชว์ % รายสัปดาห์จากเว็บแทนบล็อก 5 ชม.
-  const pct = p.manual ? p.weekly.pct : p.session.pct;
-  const gaugeLabel = p.manual ? 'รายสัปดาห์ · จากเว็บ' : 'บล็อก 5 ชั่วโมง';
+  // การ์ดที่ค่าหลักมาจากเว็บ (ปักหมุดด้วยมือ หรือ Grok สด) ให้เกจโชว์ % รายสัปดาห์แทนบล็อก 5 ชม.
+  const webGauge = p.manual || p.webGauge;
+  const pct = webGauge ? p.weekly.pct : p.session.pct;
+  const gaugeLabel = webGauge ? 'รายสัปดาห์ · จากเว็บ' : 'บล็อก 5 ชั่วโมง';
   const off = ARC_LEN * (1 - Math.min(1, pct / 100));
   const spark = p.spark || [];
   const peak = Math.max(1, ...spark);
   const bars = spark
     .map((v, i) => `<i class="${i === spark.length - 1 ? 'now' : ''}" style="height:${Math.max(2, (v / peak) * 26)}px"></i>`)
     .join('');
-  const eta = p.manual
+  const eta = webGauge
     ? 'ตามหน้าเว็บผู้ให้บริการ'
     : p.live && pct === 0 && !p.session.tokens
     ? 'โควตาเต็ม ยังไม่ใช้รอบนี้ ✦'
@@ -829,7 +832,7 @@ function cardHtml(p) {
         <div class="bar ${level(pct)}"><i style="width:${Math.min(100, pct)}%"></i></div>
       </div>
       <div class="row">
-        <div class="l"><span>รายสัปดาห์</span><em>${p.manual ? Math.round(p.weekly.pct) + '% จากเว็บ' : `${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}`}</em></div>
+        <div class="l"><span>รายสัปดาห์</span><em>${webGauge ? Math.round(p.weekly.pct) + '% จากเว็บ' : `${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}`}</em></div>
         <div class="bar ${level(p.weekly.pct)}"><i style="width:${Math.min(100, p.weekly.pct)}%"></i></div>
       </div>
       ${p.monthCostTHB != null ? `
@@ -994,6 +997,8 @@ document.querySelectorAll('.seg-b').forEach((b) => {
 });
 
 /* ---------- หน้าตั้งค่า ---------- */
+// การ์ดที่มีโหมดโควตาสดจากเว็บ (ล็อกอินในหน้าต่างแอป — ดู src/webquota.js)
+const WEB_HOST = { grok: 'grok.com', chatgpt: 'chatgpt.com' };
 const PLANS = [
   ['auto', 'อัตโนมัติ (P90)'],
   ['pro', 'Pro'],
@@ -1051,6 +1056,16 @@ function renderSettings() {
         <label class="toggle"><input type="checkbox" data-f="live" ${p.liveUsage ? 'checked' : ''}><i class="sw"></i>ถาม % ทางการจาก ChatGPT โดยตรง (ทดลอง)</label>
         <p class="cal-note">อ่าน token ของ Codex CLI แล้วถาม chatgpt.com ที่เดียวเท่านั้น —
         endpoint ฝั่งนี้ไม่มีเอกสารทางการ ถ้าใช้ไม่ได้แอปจะถอยไปอ่านจาก log/ค่าปักหมุดเอง</p>
+      </div>` : ''}
+      ${WEB_HOST[p.id] ? `
+      <div class="field" style="margin-bottom:8px">
+        <label class="toggle"><input type="checkbox" data-f="liveweb" ${p.liveWeb ? 'checked' : ''}><i class="sw"></i>โควตาสดจาก ${WEB_HOST[p.id]} (ทดลอง)</label>
+        <p class="cal-note" data-role="web-note">ล็อกอิน ${WEB_HOST[p.id]} ในหน้าต่างของแอปหนึ่งครั้ง ด้วยบัญชีเดียวกับที่ใช้บนเว็บ
+        แล้วเปิดหน้า usage ในหน้าต่างนั้นให้แอปเรียนรู้ — session อยู่ในแอปเท่านั้น
+        ไม่แตะเบราว์เซอร์หรือ cookie อื่นใด ถ้าใช้ไม่ได้แอปจะถอยไปค่าปักหมุด/ประมาณเอง
+        <button class="btn" data-act="web-login">ล็อกอิน ${WEB_HOST[p.id]}</button>
+        <button class="btn" data-act="web-test">ทดสอบ</button>
+        <button class="btn cal-clear" data-act="web-logout">ออกจากระบบ</button></p>
       </div>` : ''}
       ${p.id !== 'claude' ? `
       <div class="field">
@@ -1179,6 +1194,38 @@ document.addEventListener('click', async (e) => {
     config = await window.api.setProvider(group.dataset.id, { manual: null });
     renderSettings();
   }
+
+  if (act === 'web-login') {
+    const group = e.target.closest('.pgroup');
+    const note = group.querySelector('[data-role=web-note]');
+    note.textContent = 'ล็อกอินในหน้าต่างที่เปิดขึ้นมา แล้วเปิดหน้า usage ให้แอปเรียนรู้ — เสร็จแล้วปิดหน้าต่างนั้นได้เลย…';
+    const loggedIn = await window.api.webLogin(group.dataset.id);
+    note.textContent = loggedIn
+      ? `ล็อกอิน ${WEB_HOST[group.dataset.id]} แล้ว ✓ เปิดสวิตช์ด้านบน แล้วกด "ทดสอบ" ดูผลได้เลย`
+      : 'ยังไม่พบ session — ลองกดล็อกอินอีกครั้ง';
+  }
+
+  if (act === 'web-test') {
+    const group = e.target.closest('.pgroup');
+    const note = group.querySelector('[data-role=web-note]');
+    note.textContent = 'กำลังทดสอบดึงข้อมูลสด…';
+    const r = await window.api.webTest(group.dataset.id);
+    if (r.ok) {
+      const parts = [];
+      if (r.data.weekly) parts.push(`รายสัปดาห์ ${Math.round(r.data.weekly.pct)}%`);
+      if (r.data.session) parts.push(`รอบสั้น ${Math.round(r.data.session.pct)}%`);
+      note.textContent = `ได้ข้อมูลสดแล้ว ✓ ${parts.join(' · ')}`;
+    } else {
+      note.textContent = `ไม่สำเร็จ: ${r.error} — เปิดหน้าต่างล็อกอินแล้วเข้าหน้า usage หนึ่งครั้งเพื่อให้แอปเรียนรู้ แล้วกดทดสอบใหม่`;
+    }
+  }
+
+  if (act === 'web-logout') {
+    const group = e.target.closest('.pgroup');
+    await window.api.webLogout(group.dataset.id);
+    group.querySelector('[data-role=web-note]').textContent =
+      `ล้าง session ของ ${WEB_HOST[group.dataset.id]} ออกจากแอปแล้ว`;
+  }
 });
 
 document.getElementById('b-set').onclick = () => document.getElementById('sheet').classList.add('open');
@@ -1221,6 +1268,7 @@ document.addEventListener('change', async (e) => {
   const f = e.target.dataset.f;
   if (f === 'plan') config = await window.api.setProvider(group.dataset.id, { plan: e.target.value });
   if (f === 'live') config = await window.api.setProvider(group.dataset.id, { liveUsage: e.target.checked });
+  if (f === 'liveweb') config = await window.api.setProvider(group.dataset.id, { liveWeb: e.target.checked });
   if (f === 'enabled') config = await window.api.setProvider(group.dataset.id, { enabled: e.target.checked });
   if (f === 'root') config = await window.api.setProvider(group.dataset.id, { roots: [e.target.value] });
 });

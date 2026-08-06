@@ -9,7 +9,7 @@ const os = require('os');
 const path = require('path');
 
 const usage = require('../src/usage');
-const { fetchCodexLive } = require('../src/liveusage');
+const { fetchCodexLive, parseGrokRateLimits, parseGrokText } = require('../src/liveusage');
 const history = require('../src/history');
 const { PLAN_PRESETS } = require('../src/config');
 
@@ -217,6 +217,97 @@ t('ใช้บรรทัด rate_limits ล่าสุดในไฟล์'
 t('ไฟล์ไม่มี rate_limits เลย → null', () => {
   const dir = fixture({ 'r.jsonl': [claudeLine(Date.now() - H, { input_tokens: 10, output_tokens: 0 })] });
   eq(fetchCodexLive([dir]), null);
+});
+
+console.log('\nliveusage.js (Grok web)');
+
+t('rate-limits ตรง ๆ: เหลือ 20/80 = ใช้ไป 75% หน้าต่างสั้นเป็น session', () => {
+  const r = parseGrokRateLimits({ windowSizeSeconds: 7200, remainingQueries: 20, totalQueries: 80 }, NOW);
+  eq(Math.round(r.session.pct), 75);
+  eq(r.weekly, null);
+});
+
+t('ไม่บอกขนาดหน้าต่าง → จัดเป็นรายสัปดาห์ (ช่องเดียวกับปักหมุด)', () => {
+  const r = parseGrokRateLimits({ remainingTokens: 30, totalTokens: 100 }, NOW);
+  eq(Math.round(r.weekly.pct), 70);
+  eq(r.session, null);
+});
+
+t('ซ้อนหลายชั้นหลายหน้าต่าง → เอาตัวที่ใช้ไปมากสุดของแต่ละกลุ่ม', () => {
+  const r = parseGrokRateLimits({
+    a: { windowSizeSeconds: 86400, remainingQueries: 90, totalQueries: 100 },
+    b: { windowSizeSeconds: 604800, remainingQueries: 10, totalQueries: 100 }
+  }, NOW);
+  eq(Math.round(r.weekly.pct), 90);
+});
+
+t('waitTimeSeconds → resetAt = ตอนนี้ + เวลารอ', () => {
+  const r = parseGrokRateLimits({ windowSizeSeconds: 7200, remainingQueries: 0, totalQueries: 80, waitTimeSeconds: 3600 }, NOW);
+  eq(r.session.pct, 100);
+  eq(r.session.resetAt, NOW + 3600 * 1000);
+});
+
+t('แบบหน้า Usage: usedPercent + เวลารีเซ็ต ISO → weekly', () => {
+  const r = parseGrokRateLimits({ imagine: { usedPercent: 63, resetsAt: new Date(NOW + 3 * 24 * H).toISOString() } }, NOW);
+  eq(r.weekly.pct, 63);
+  eq(r.weekly.resetAt, NOW + 3 * 24 * H);
+  eq(r.session, null);
+});
+
+t('เวลารีเซ็ตเป็น epoch วินาที → แปลงเป็น ms', () => {
+  const r = parseGrokRateLimits({ percentUsed: 40, resetTime: Math.floor((NOW + 24 * H) / 1000) }, NOW);
+  eq(r.weekly.pct, 40);
+  eq(r.weekly.resetAt, Math.floor((NOW + 24 * H) / 1000) * 1000);
+});
+
+t('โครงไม่รู้จัก/ว่าง → null ห้ามเดา', () => {
+  eq(parseGrokRateLimits({ hello: 'world' }, NOW), null);
+  eq(parseGrokRateLimits(null, NOW), null);
+  eq(parseGrokRateLimits({ totalQueries: 0, remainingQueries: 0 }, NOW), null);
+});
+
+t('parseGrokText: JSON ตรง ๆ ก็อ่านได้', () => {
+  const r = parseGrokText('{"usedPercent":63}', NOW);
+  eq(r.weekly.pct, 63);
+});
+
+t('parseGrokText: payload แบบ RSC (JSON ฝังในข้อความ + escape) → เจอ 63%', () => {
+  const iso = new Date(NOW + 3 * 24 * H).toISOString();
+  const rsc = `0:["$","div",null]\n1:I{"usage":[{\\"name\\":\\"imagine\\",\\"usedPercent\\":63,\\"resetsAt\\":\\"${iso}\\"}]}\n2:null`;
+  const r = parseGrokText(rsc, NOW);
+  eq(r.weekly.pct, 63);
+  eq(r.weekly.resetAt, NOW + 3 * 24 * H);
+});
+
+t('แบบ ChatGPT: used_percent + window_minutes → จัดกลุ่มตามขนาดหน้าต่าง', () => {
+  const reset = secs(NOW + 2 * 24 * H);
+  const r = parseGrokText(JSON.stringify({
+    rate_limits: {
+      primary: { used_percent: 81, window_minutes: 10080, resets_at: reset },
+      secondary: { used_percent: 12, window_minutes: 300 }
+    }
+  }), NOW);
+  eq(r.weekly.pct, 81);
+  eq(r.weekly.resetAt, reset * 1000);
+  eq(r.session.pct, 12);
+});
+
+t('คีย์แบบ "% ที่เหลือ" (remainingPercent) → กลับด้านเป็น % ที่ใช้ไป', () => {
+  const r = parseGrokRateLimits({ remainingPercent: 0, resetsAt: new Date(NOW + 2 * 24 * H).toISOString() }, NOW);
+  eq(r.weekly.pct, 100);
+  const r2 = parseGrokRateLimits({ percentLeft: 37 }, NOW);
+  eq(r2.weekly.pct, 63);
+});
+
+t('คู่ used/limit → คำนวณ % เอง', () => {
+  const r = parseGrokRateLimits({ used: 45, limit: 60, resetsAt: new Date(NOW + 24 * H).toISOString() }, NOW);
+  eq(Math.round(r.weekly.pct), 75);
+  eq(r.weekly.resetAt, NOW + 24 * H);
+});
+
+t('parseGrokText: ข้อความไม่มีอะไรเลย → null', () => {
+  eq(parseGrokText('hello world {"foo":1}', NOW), null);
+  eq(parseGrokText('', NOW), null);
 });
 
 console.log('\nhistory.js');

@@ -334,4 +334,114 @@ async function fetchCodexApiLive() {
   }
 }
 
-module.exports = { fetchLive, fetchCodexLive, fetchCodexApiLive };
+/* ---------- Grok (grok.com) — ตัวแปลงคำตอบ /rest/rate-limits ----------
+ * ส่วนยิงเน็ตอยู่ใน src/grokweb.js (ต้องใช้ Electron session) — แยกตัวแปลงมาไว้ที่นี่
+ * เป็นฟังก์ชันล้วนเพื่อเทสต์ได้ด้วย node เปล่า ๆ
+ * โครงคำตอบไม่ทางการและเปลี่ยนได้ จึงเดินหา object ที่มีคู่ remaining/total แบบยืดหยุ่น
+ * (แนวเดียวกับ findUsage ใน usage.js)
+ */
+/** หาเวลารีเซ็ตจาก key ที่หน้าตาเหมือน reset/renew/expire — รับได้ทั้ง ISO, epoch วินาที/ms, วินาทีนับจากนี้ */
+function grokResetAt(o, now) {
+  for (const [k, v] of Object.entries(o)) {
+    if (!/reset|renew|expire/i.test(k)) continue;
+    if (typeof v === 'string') {
+      const t = Date.parse(v);
+      if (isFinite(t) && t > now) return t;
+      continue;
+    }
+    const n = Number(v);
+    if (!isFinite(n) || n <= 0) continue;
+    if (n > 1e12) return n; // epoch ms
+    if (n > 1e9) return n * 1000; // epoch วินาที
+    return now + n * 1000; // วินาทีนับจากนี้
+  }
+  const waitSec = Number(o.waitTimeSeconds ?? o.wait_time_seconds) || 0;
+  return waitSec > 0 ? now + waitSec * 1000 : null;
+}
+
+function grokWindow(o, now) {
+  const winSec =
+    Number(o.windowSizeSeconds ?? o.window_size_seconds) ||
+    (Number(o.window_minutes ?? o.windowMinutes) || 0) * 60;
+  // แบบที่ 1: คู่ remaining/total หรือ used/limit — คำนวณ % เอง
+  const total = Number(o.totalQueries ?? o.total_queries ?? o.totalTokens ?? o.total ?? o.limit ?? o.max);
+  const remaining = Number(o.remainingQueries ?? o.remaining_queries ?? o.remainingTokens ?? o.remaining);
+  const used = Number(o.usedQueries ?? o.used_queries ?? o.usedTokens ?? o.used);
+  if (isFinite(total) && total > 0) {
+    const pct = isFinite(remaining) ? (1 - remaining / total) * 100 : isFinite(used) ? (used / total) * 100 : null;
+    if (pct != null) {
+      return {
+        pct: Math.max(0, Math.min(999, pct)),
+        resetAt: grokResetAt(o, now),
+        winSec
+      };
+    }
+  }
+  // แบบที่ 2: บอกเปอร์เซ็นต์ตรง ๆ (แบบหน้า Usage — "63% used" หรือ "0% remaining")
+  for (const [k, v] of Object.entries(o)) {
+    if (typeof v === 'object' || !/percent|pct/i.test(k)) continue;
+    const raw = Number(v);
+    if (isFinite(raw) && raw >= 0 && raw <= 100) {
+      // คีย์แบบ "remaining/left" คือ % ที่เหลือ ต้องกลับด้านเป็น % ที่ใช้ไป
+      const pct = /remaining|left/i.test(k) ? 100 - raw : raw;
+      return { pct, resetAt: grokResetAt(o, now), winSec };
+    }
+  }
+  return null;
+}
+
+/** คืน { session, weekly } หรือ null ถ้าไม่พบหน้าต่างโควตาที่อ่านออกเลย */
+function parseGrokRateLimits(json, now = Date.now()) {
+  if (!json || typeof json !== 'object') return null;
+  const wins = [];
+  const walk = (o, depth) => {
+    if (!o || typeof o !== 'object' || depth > 3) return;
+    const w = grokWindow(o, now);
+    if (w) return void wins.push(w);
+    for (const v of Object.values(o)) walk(v, depth + 1);
+  };
+  walk(json, 0);
+  if (!wins.length) return null;
+  // ≤10 ชม. = รอบสั้น (session), ยาวกว่าหรือไม่บอกขนาด = รายสัปดาห์ (ช่องเดียวกับปักหมุด)
+  // มีหลายหน้าต่างในกลุ่มเดียวกัน เอาอันที่ใช้ไปมากสุด — ตัวที่บีบเราจริง
+  const out = { session: null, weekly: null };
+  for (const w of wins) {
+    const key = w.winSec > 0 && w.winSec <= 36000 ? 'session' : 'weekly';
+    if (!out[key] || w.pct > out[key].pct) out[key] = { pct: w.pct, resetAt: w.resetAt };
+  }
+  return out;
+}
+
+/** อ่านคำตอบที่อาจไม่ใช่ JSON ตรง ๆ — หน้า Usage ของ grok.com ส่งข้อมูลแบบ
+ *  React Server Components (ข้อความยาวที่มี JSON ฝังเป็นท่อน ๆ บางทีถูก escape)
+ *  จึงดึง object แบน ๆ ที่มีคีย์เปอร์เซ็นต์/remaining ออกมาลองแปลงทีละตัว */
+function parseGrokText(text, now = Date.now()) {
+  if (!text) return null;
+  try {
+    return parseGrokRateLimits(JSON.parse(text), now);
+  } catch { /* ไม่ใช่ JSON เดี่ยว — ขุดจากข้อความต่อ */ }
+  const out = { session: null, weekly: null };
+  let found = false;
+  const chunk = text.slice(0, 3 * 1024 * 1024);
+  for (const m of chunk.match(/\{[^{}]*(?:percent|pct|remaining|used|quota)[^{}]*\}/gi) || []) {
+    let obj = null;
+    try {
+      obj = JSON.parse(m);
+    } catch {
+      try {
+        obj = JSON.parse(m.replace(/\\"/g, '"')); // JSON ที่ถูก escape อยู่ในสตริงอีกชั้น
+      } catch {
+        continue;
+      }
+    }
+    const d = parseGrokRateLimits(obj, now);
+    if (!d) continue;
+    found = true;
+    for (const k of ['session', 'weekly']) {
+      if (d[k] && (!out[k] || d[k].pct > out[k].pct)) out[k] = d[k];
+    }
+  }
+  return found ? out : null;
+}
+
+module.exports = { fetchLive, fetchCodexLive, fetchCodexApiLive, parseGrokRateLimits, parseGrokText };
