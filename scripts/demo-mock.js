@@ -4,24 +4,30 @@
 const rnd=(n,s)=>Array.from({length:24},(_,i)=>Math.round(Math.max(0,Math.sin(i/2.2+s)*n+n*0.7+Math.random()*n*0.5)));
 const now=Date.now();
 const MOCK={updatedAt:now,providers:[
- {id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',plan:'max5',planLabel:'Max 5x',ok:true,state:'ok',calibrated:true,live:true,
-  session:{tokens:139000,limit:993000,pct:14,resetAt:now+2*3600e3},weekly:{tokens:13960000,limit:22500000,pct:62},
+ // windowSource:'live' = นับ token ในกรอบเดียวกับผู้ให้บริการ การ์ดจึงโชว์คู่ token/ลิมิตได้
+ {id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',plan:'max5',planLabel:'Max 5x',ok:true,state:'ok',live:true,
+  windowSource:{session:'live',weekly:'live'},headline:{window:'session',pct:14,resetAt:now+2*3600e3,source:'api'},
+  session:{tokens:139000,limit:993000,pct:14,resetAt:now+2*3600e3,liveSource:'api',limitFromPct:true},
+  weekly:{tokens:13960000,limit:22500000,pct:62,liveSource:'api',limitFromPct:true},
   monthTokens:41000000,monthCostTHB:6150,
   burnPerHour:15400,etaMs:9.5*3600e3,spark:rnd(9000,0)},
  {id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',plan:'plus',planLabel:'Plus',ok:true,state:'ok',live:true,
-  session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3},weekly:{tokens:388000,limit:720000,pct:54},
+  windowSource:{session:'live',weekly:'live'},headline:{window:'session',pct:74.5,resetAt:now+66*60e3,source:'api'},
+  session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3,liveSource:'api',limitFromPct:true},
+  weekly:{tokens:388000,limit:720000,pct:54,liveSource:'api',limitFromPct:true},
   burnPerHour:28800,etaMs:32*60e3,spark:rnd(14000,2)},
  {id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#A78BFA',state:'unconfigured',
   message:'ยังไม่พบโฟลเดอร์ log — ตั้ง path ได้ในหน้าตั้งค่า'}
 ]};
 const CFG={refreshSeconds:60,alertThreshold:90,showInTaskbar:true,alwaysOnTop:false,startWithWindows:false,weeklyMode:'rolling',
- providers:{claude:{id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',enabled:true,plan:'max5',liveUsage:true,calibration:{session:993000,weekly:22500000,at:now},roots:['C:\\Users\\you\\.claude\\projects']},
+ providers:{claude:{id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',enabled:true,plan:'max5',liveUsage:true,calibration:null,liveLimit:{session:993000,weekly:22500000,at:now},roots:['C:\\Users\\you\\.claude\\projects']},
  chatgpt:{id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',enabled:true,plan:'plus',roots:['C:\\Users\\you\\.codex\\sessions']},
  grok:{id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#A78BFA',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.grok']}}};
 let _cb=null;
 window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
  setProvider:async(id,p)=>{Object.assign(CFG.providers[id],p);const m=MOCK.providers.find(x=>x.id===id);if(m&&p.plan){m.plan=p.plan;m.planLabel={auto:'อัตโนมัติ (P90)',pro:'Pro',max5:'Max 5x',max20:'Max 20x',plus:'Plus'}[p.plan];_cb&&_cb(MOCK);}if(m&&('calibration' in p)&&!p.calibration){m.calibrated=false;_cb&&_cb(MOCK);}if(m&&('liveUsage' in p)){m.live=!!p.liveUsage;_cb&&_cb(MOCK);}return CFG;},
  calibrate:async(id,q)=>{const prov=CFG.providers[id];const m=MOCK.providers.find(x=>x.id===id);
+  if(prov.liveUsage||prov.liveWeb)return{ok:false,message:'เปิดโหมดสดอยู่ — % มาจากผู้ให้บริการโดยตรงแล้ว ไม่ต้องปรับเทียบ'};
   if(!m||!m.ok)return{ok:false,message:'ยังไม่มีข้อมูลการใช้งาน ปรับเทียบไม่ได้'};
   const cal={...(prov.calibration||{})};
   if(q.sessionPct>0)cal.session=Math.round(m.session.tokens/(q.sessionPct/100));

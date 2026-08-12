@@ -267,6 +267,8 @@ body.mini .tabs, body.mini #history { display: none !important; }
   white-space: nowrap;
 }
 .live-dot.err { color: var(--warn); background: rgba(245, 196, 81, 0.08); border-color: rgba(245, 196, 81, 0.3); }
+/* ค่าสดที่ค้างไว้ — เขียวจาง ๆ บอกว่าเชื่อได้แต่ไม่ใช่ของสด ๆ */
+.live-dot.stale { color: #86c9a0; background: rgba(74, 222, 128, 0.05); border-color: rgba(74, 222, 128, 0.2); }
 .live-dot.man { color: #c4b5fd; background: rgba(167, 139, 250, 0.1); border-color: rgba(167, 139, 250, 0.35); }
 .live-dot ~ .pill { margin-left: 8px; }
 body.mini .live-dot { display: none; }
@@ -365,7 +367,12 @@ body.mini .row.cost { display: none; }
   backdrop-filter: blur(8px);
 }
 .toggle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; cursor: pointer; }
+/* .field label ตั้ง display:block ไว้ และเจาะจงกว่า .toggle จึงชนะ ทำให้สวิตช์ที่อยู่
+   ในกล่อง .field หลุดไปแทรกกลางข้อความแทนที่จะยืนเป็นแถวเดียวกัน — ต้องทวงคืนตรงนี้
+   (สวิตช์ "เปิดใช้งานการ์ดนี้" อยู่นอก .field จึงไม่เคยพัง เลยมองข้ามกันมานาน) */
+.field label.toggle { display: flex; font-size: 12.5px; }
 .toggle input { display: none; }
+.toggle .sw { flex: 0 0 auto; }
 .sw {
   width: 34px; height: 19px; border-radius: 999px;
   background: var(--track); position: relative; transition: background 0.2s;

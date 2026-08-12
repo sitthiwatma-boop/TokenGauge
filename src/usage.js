@@ -9,6 +9,8 @@ const fs = require('fs');
 const path = require('path');
 
 const BLOCK_MS = 5 * 60 * 60 * 1000; // บล็อก 5 ชั่วโมง
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+const LIVE_LIMIT_TTL = 14 * 24 * 60 * 60 * 1000; // ลิมิตที่เรียนรู้เองมีอายุ 14 วัน
 const MAX_DEPTH = 5;
 
 /* ---------- ตัวช่วยดึงค่าออกจาก JSON ที่โครงสร้างต่างกันไปในแต่ละเจ้า ---------- */
@@ -28,23 +30,32 @@ function readUsageShape(o) {
   };
 }
 
+/**
+ * ลำดับ key ที่มักเก็บ usage ไว้ — ต้องเลือกให้ตรงกับ aggregation ของเจ้านั้น
+ *
+ * Codex เขียนทั้ง total_token_usage (ยอดสะสมของ session) และ last_token_usage
+ * (ยอดเทิร์นล่าสุด) ไว้ใน payload.info ก้อนเดียวกัน โหมด 'cumulative-max' ต้องการ
+ * ตัวสะสม ถ้าหยิบ last_ ไปจะกลายเป็น "เทิร์นที่ใหญ่สุดของไฟล์" ซึ่งต่ำกว่าจริงมาก
+ * (วัดจาก log จริง 10 ไฟล์: 1.74M เทียบกับ 295M — ต่างกัน 170 เท่า)
+ */
+const PRIORITY_SUM = ['usage', 'last_token_usage', 'total_token_usage', 'token_usage', 'message', 'info', 'response', 'payload'];
+const PRIORITY_CUMULATIVE = ['usage', 'total_token_usage', 'last_token_usage', 'token_usage', 'message', 'info', 'response', 'payload'];
+
 /** ค้นหา object ที่หน้าตาเหมือน usage ในระดับลึกไม่เกิน MAX_DEPTH */
-function findUsage(node, depth = 0) {
+function findUsage(node, depth = 0, priority = PRIORITY_SUM) {
   if (!node || typeof node !== 'object' || depth > MAX_DEPTH) return null;
   const direct = readUsageShape(node);
   if (direct) return direct;
-  // เรียงลำดับความสำคัญของ key ที่มักเก็บ usage ไว้
-  const priority = ['usage', 'last_token_usage', 'total_token_usage', 'token_usage', 'message', 'info', 'response', 'payload'];
   for (const key of priority) {
     if (node[key]) {
-      const found = findUsage(node[key], depth + 1);
+      const found = findUsage(node[key], depth + 1, priority);
       if (found) return found;
     }
   }
   for (const [k, v] of Object.entries(node)) {
     if (priority.includes(k)) continue;
     if (v && typeof v === 'object') {
-      const found = findUsage(v, depth + 1);
+      const found = findUsage(v, depth + 1, priority);
       if (found) return found;
     }
   }
@@ -106,7 +117,10 @@ function parseFile(file, provider) {
   } catch {
     return [];
   }
-  const cached = fileCache.get(file);
+  const cumulative = provider.aggregation === 'cumulative-max';
+  // aggregation เป็นส่วนหนึ่งของ key เพราะมันเปลี่ยน key ที่เลือกอ่าน (ดู PRIORITY_*)
+  const key = `${provider.aggregation}|${file}`;
+  const cached = fileCache.get(key);
   if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return cached.events;
 
   let text = '';
@@ -129,13 +143,13 @@ function parseFile(file, provider) {
     } catch {
       continue;
     }
-    const u = findUsage(obj);
+    const u = findUsage(obj, 0, cumulative ? PRIORITY_CUMULATIVE : PRIORITY_SUM);
     if (!u) continue;
     const ts = findTimestamp(obj, st.mtimeMs);
     const total = u.input + u.output + u.cacheCreate + u.cacheRead;
     if (total <= 0) continue;
 
-    if (provider.aggregation === 'cumulative-max') {
+    if (cumulative) {
       if (!best || total > best.total) best = { ...u, ts, total };
       continue;
     }
@@ -147,12 +161,12 @@ function parseFile(file, provider) {
     events.push({ ts, ...u });
   }
 
-  if (provider.aggregation === 'cumulative-max' && best) {
+  if (cumulative && best) {
     events.push({ ts: best.ts, input: best.input, output: best.output, cacheCreate: best.cacheCreate, cacheRead: best.cacheRead });
   }
 
   events.sort((a, b) => a.ts - b.ts);
-  fileCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, events });
+  fileCache.set(key, { mtimeMs: st.mtimeMs, size: st.size, events });
   return events;
 }
 
@@ -197,6 +211,20 @@ function buildBlocks(events, w) {
     cur.lastTs = e.ts;
   }
   return blocks;
+}
+
+/** ยอดถ่วงน้ำหนัก + จำนวน event + เวลาของ event แรก ในช่วง [from, to) — to = null คือไม่จำกัด */
+function sumRange(events, w, from, to) {
+  let tokens = 0;
+  let count = 0;
+  let firstTs = null;
+  for (const e of events) {
+    if (e.ts < from || (to != null && e.ts >= to)) continue;
+    tokens += weighted(e, w);
+    count += 1;
+    if (firstTs == null || e.ts < firstTs) firstTs = e.ts;
+  }
+  return { tokens, count, firstTs };
 }
 
 function percentile(arr, p) {
@@ -262,31 +290,56 @@ function computeProvider(provider, presets, opts = {}) {
   const blocks = buildBlocks(events, w);
   const active = blocks.find((b) => now >= b.start && now < b.end) || null;
 
-  // ลิมิต: ค่าที่ผู้ใช้ปรับเทียบเองชนะทุกอย่าง > ค่าตามแพลน > P90 จากบล็อกที่ผ่านมา
+  // ขอบหน้าต่างที่ผู้ให้บริการบอกมาเอง (มาคู่กับ % ทางการ ดู applyLive ใน main.js)
+  // ถ้ามี ให้นับ token ในกรอบเดียวกับเขา ไม่งั้นตัวเลขที่นับได้จะคนละหน้าต่างกับ % ที่โชว์
+  // (เคยทำให้รายสัปดาห์ขึ้นแดง 97% ทั้งที่ทางการบอก 3% เพราะรอบเพิ่งรีเซ็ตไปเมื่อเช้า)
+  // ความยาวหน้าต่างเอาตามที่ผู้ให้บริการบอก (Codex บอกเป็น window_minutes) ไม่งั้นใช้ค่ามาตรฐาน
+  const hint = opts.window || {};
+  const sessionFrom = hint.session > 0 ? hint.session - (hint.sessionMs > 0 ? hint.sessionMs : BLOCK_MS) : null;
+  const weeklyReset = hint.weekly > 0 ? hint.weekly : null;
+  const weeklyMs = hint.weeklyMs > 0 ? hint.weeklyMs : WEEK_MS;
+
+  // ลิมิต: ค่าที่ผู้ใช้ปรับเทียบเองชนะทุกอย่าง > ค่าที่เรียนรู้จาก % ทางการ > ค่าตามแพลน > P90
   const cal = provider.calibration || {};
+  // ค่าที่เรียนรู้ต้องหมดอายุ ไม่งั้นค่าที่เพี้ยนตอน API ล่มจะค้างถาวรข้ามการรีสตาร์ต
+  // และผู้ใช้จะเปลี่ยนแพลนในหน้าตั้งค่าแล้วไม่มีอะไรเกิดขึ้นตลอดไป
+  const ll = provider.liveLimit;
+  const learned = ll?.at > 0 && now - ll.at < LIVE_LIMIT_TTL ? ll : {};
   const preset = presets[provider.plan] || presets.auto;
   const past = blocks.filter((b) => b !== active).map((b) => b.tokens);
   // ต้องมีบล็อกที่จบแล้วอย่างน้อย 3 บล็อก ค่า P90 จึงจะเชื่อถือได้
-  const estimating = !cal.session && !preset.session && past.length < 3;
+  const estimating = !cal.session && !learned.session && !preset.session && past.length < 3;
   const autoSession = estimating
     ? Math.max(50000, (active ? active.tokens : 0) * 2)
     : percentile(past, 90) || 50000;
-  const sessionLimit = cal.session || preset.session || Math.round(autoSession);
+  const sessionLimit = cal.session || learned.session || preset.session || Math.round(autoSession);
 
-  const weekFrom = opts.weeklyMode === 'calendar' ? startOfWeek(now) : now - 7 * 24 * 3600 * 1000;
-  const weeklyTokens = events.filter((e) => e.ts >= weekFrom).reduce((s, e) => s + weighted(e, w), 0);
-  const weeklyLimit = cal.weekly || preset.weekly || Math.max(Math.round(autoSession * 12), 1);
+  const weekFrom = weeklyReset != null
+    ? weeklyReset - weeklyMs
+    : opts.weeklyMode === 'calendar' ? startOfWeek(now) : now - WEEK_MS;
+  // ต้องมีขอบบนด้วยเมื่อรอบมาจากผู้ให้บริการ ไม่งั้นการใช้งานหลังรอบรีเซ็ตจะถูกนับ
+  // เข้ารอบเก่า แล้วลิมิตที่ถอดกลับจะพองตาม (session ใช้ [from, to) อยู่แล้ว ต้องสมมาตรกัน)
+  const weeklyTokens = sumRange(events, w, weekFrom, weeklyReset).tokens;
+  const weeklyLimit = cal.weekly || learned.weekly || preset.weekly || Math.max(Math.round(autoSession * 12), 1);
 
-  const sessionTokens = active ? active.tokens : 0;
+  const sess = sessionFrom != null
+    ? sumRange(events, w, sessionFrom, hint.session)
+    : { tokens: active ? active.tokens : 0, count: active ? active.count : 0 };
+  const sessionStart = sessionFrom != null ? sessionFrom : active ? active.start : null;
+  const sessionTokens = sess.tokens;
   const sessionPct = Math.min(999, (sessionTokens / sessionLimit) * 100);
   const weeklyPct = Math.min(999, (weeklyTokens / weeklyLimit) * 100);
 
   // อัตราการเผาผลาญ + เวลาที่คาดว่าจะเต็ม
+  // นับเวลาที่ผ่านไปจาก "การใช้งานครั้งแรกในรอบ" ไม่ใช่ขอบซ้ายของหน้าต่าง —
+  // ถ้าผู้ใช้เพิ่งเริ่มใช้ตอนท้ายรอบ การหารด้วยเวลาว่างตอนต้นจะทำให้อัตราต่ำผิดไปหลายเท่า
+  // แล้ว ETA จะบอกว่า "อีก 4.7 ชม.จะเต็ม" ทั้งที่รอบจะรีเซ็ตใน 20 นาที
   let burnPerHour = 0;
   let etaMs = null;
-  if (active && active.count > 1) {
-    const elapsedH = Math.max(0.05, (now - active.start) / 3600000);
-    burnPerHour = active.tokens / elapsedH;
+  const burnFrom = sess.firstTs != null ? Math.max(sessionStart, sess.firstTs) : sessionStart;
+  if (burnFrom != null && sess.count > 1) {
+    const elapsedH = Math.max(0.05, (now - burnFrom) / 3600000);
+    burnPerHour = sessionTokens / elapsedH;
     const remain = sessionLimit - sessionTokens;
     if (burnPerHour > 0 && remain > 0) etaMs = (remain / burnPerHour) * 3600000;
   }
@@ -297,18 +350,25 @@ function computeProvider(provider, presets, opts = {}) {
     state: 'ok',
     estimating,
     calibrated: !!(cal.session || cal.weekly),
+    // 'live' = นับในหน้าต่างเดียวกับผู้ให้บริการ จึงคำนวณลิมิตย้อนกลับจากตัวเลขนี้ได้
+    windowSource: {
+      session: sessionFrom != null ? 'live' : 'block',
+      weekly: weeklyReset != null ? 'live' : opts.weeklyMode === 'calendar' ? 'calendar' : 'rolling'
+    },
     session: {
       tokens: Math.round(sessionTokens),
       limit: sessionLimit,
       pct: sessionPct,
-      resetAt: active ? active.end : null,
-      startedAt: active ? active.start : null
+      resetAt: sessionFrom != null ? hint.session : active ? active.end : null,
+      startedAt: sessionStart
     },
     weekly: {
       tokens: Math.round(weeklyTokens),
       limit: weeklyLimit,
       pct: weeklyPct,
-      resetAt: opts.weeklyMode === 'calendar' ? startOfWeek(now) + 7 * 24 * 3600 * 1000 : null
+      resetAt: weeklyReset != null
+        ? weeklyReset
+        : opts.weeklyMode === 'calendar' ? startOfWeek(now) + WEEK_MS : null
     },
     burnPerHour: Math.round(burnPerHour),
     etaMs,
@@ -319,13 +379,17 @@ function computeProvider(provider, presets, opts = {}) {
   };
 }
 
-function computeAll(config) {
+/** opts.liveWindows = { <id>: { session, weekly } } เวลารีเซ็ตจริงจากผู้ให้บริการ (ถ้ามี) */
+function computeAll(config, opts = {}) {
   const presets = require('./config').PLAN_PRESETS;
   const out = [];
   for (const p of Object.values(config.providers)) {
     if (!p.enabled) continue;
     try {
-      out.push(computeProvider(p, presets, { weeklyMode: config.weeklyMode }));
+      out.push(computeProvider(p, presets, {
+        weeklyMode: config.weeklyMode,
+        window: opts.liveWindows?.[p.id] || null
+      }));
     } catch (err) {
       out.push({ id: p.id, name: p.name, accent: p.accent, state: 'error', message: String(err.message || err) });
     }
@@ -345,4 +409,4 @@ function exportCsv(config) {
   return rows.map((r) => r.join(',')).join('\n');
 }
 
-module.exports = { computeAll, computeProvider, exportCsv, BLOCK_MS };
+module.exports = { computeAll, computeProvider, exportCsv, BLOCK_MS, WEEK_MS };

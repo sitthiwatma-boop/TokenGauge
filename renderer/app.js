@@ -24,7 +24,9 @@ function fmtCountdown(ms) {
   const h = Math.floor(ms / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
   const s = Math.floor((ms % 60000) / 1000);
-  return h > 0 ? `${h}h ${String(m).padStart(2, '0')}m` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  // เกินวันขึ้นไปตัวเลขชั่วโมงล้วนอ่านยาก (162h) — แสดงเป็นวัน+ชั่วโมงแทน นาทีไม่สำคัญแล้วที่สเกลนี้
+  if (h >= 24) return `${Math.floor(h / 24)}วัน ${h % 24}ชม.`;
+  return h > 0 ? `${h}ชม. ${String(m).padStart(2, '0')}น.` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 const level = (pct) => (pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '');
 const dtLocal = (ms) => {
@@ -120,7 +122,9 @@ function cardHtml(p) {
 
   // การ์ดที่ค่าหลักมาจากเว็บ (ปักหมุดด้วยมือ หรือ Grok สด) ให้เกจโชว์ % รายสัปดาห์แทนบล็อก 5 ชม.
   const webGauge = p.manual || p.webGauge;
-  const pct = webGauge ? p.weekly.pct : p.session.pct;
+  // main คิด headline มาให้แล้ว (ดู pushUsage) ใช้ของเขาเป็นหลักเพื่อให้ tray/แจ้งเตือน
+  // พูดตรงกับหน้าปัดเสมอ — คำนวณเองเป็นทางสำรองสำหรับ demo mock ที่ไม่มีฟิลด์นี้
+  const pct = p.headline ? p.headline.pct : webGauge ? p.weekly.pct : p.session.pct;
   const gaugeLabel = webGauge ? 'รายสัปดาห์ · จากเว็บ' : 'บล็อก 5 ชั่วโมง';
   const off = ARC_LEN * (1 - Math.min(1, pct / 100));
   const spark = p.spark || [];
@@ -130,9 +134,11 @@ function cardHtml(p) {
     .join('');
   const eta = webGauge
     ? 'ตามหน้าเว็บผู้ให้บริการ'
-    : p.live && pct === 0 && !p.session.tokens
+    // ต้องเป็น liveSource ของ session เอง — p.live ติดธงแม้ API ให้มาแต่รายสัปดาห์
+    // ซึ่งกรณีนั้น session.pct เป็นค่าประมาณ จะประกาศ "โควตาเต็ม" ไม่ได้
+    : p.session.liveSource && pct === 0 && !p.session.tokens
     ? 'โควตาเต็ม ยังไม่ใช้รอบนี้ ✦'
-    : p.estimating
+    : p.estimating && !p.session.liveSource
     ? 'กำลังเรียนรู้พฤติกรรมการใช้'
     : p.etaMs
     ? `เต็มใน ~${fmtCountdown(p.etaMs)}`
@@ -144,7 +150,7 @@ function cardHtml(p) {
     <div class="card-head">
       <div class="mascot m-${p.id} ${mood}">${mascotSvg(p.id, mood)}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
-      ${p.live ? '<span class="live-dot" title="% ทางการจากผู้ให้บริการโดยตรง">● สด</span>' : p.liveError ? `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>` : p.manual ? '<span class="live-dot man" title="ปักหมุดจากเว็บด้วยมือ — อัปเดตได้ในหน้าตั้งค่า">ปักหมุด</span>' : ''}
+      ${sourceBadge(p)}
       <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'เปลี่ยนแพลนได้ในหน้าตั้งค่า'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
     </div>
 
@@ -174,11 +180,13 @@ function cardHtml(p) {
 
     <div class="rows">
       <div class="row">
-        <div class="l"><span>บล็อกปัจจุบัน</span><em>${fmtTokens(p.session.tokens)} / ${fmtTokens(p.session.limit)}</em></div>
-        <div class="bar ${level(pct)}"><i style="width:${Math.min(100, pct)}%"></i></div>
+        <div class="l"><span>บล็อกปัจจุบัน</span><em>${amountLabel(p, 'session')}</em></div>
+        <!-- ต้องเป็น session.pct ไม่ใช่ pct ของหน้าปัด — การ์ดที่หน้าปัดโชว์รายสัปดาห์
+             จะทำให้แถบนี้ถมตามรายสัปดาห์ ขัดกับตัวเลขในแถวเดียวกันเอง -->
+        <div class="bar ${level(p.session.pct)}"><i style="width:${Math.min(100, p.session.pct)}%"></i></div>
       </div>
       <div class="row">
-        <div class="l"><span>รายสัปดาห์</span><em>${webGauge ? Math.round(p.weekly.pct) + '% จากเว็บ' : `${fmtTokens(p.weekly.tokens)} / ${fmtTokens(p.weekly.limit)}`}</em></div>
+        <div class="l"><span>รายสัปดาห์</span><em>${webGauge ? Math.round(p.weekly.pct) + '% จากเว็บ' : amountLabel(p, 'weekly')}</em></div>
         <div class="bar ${level(p.weekly.pct)}"><i style="width:${Math.min(100, p.weekly.pct)}%"></i></div>
       </div>
       ${p.monthCostTHB != null ? `
@@ -191,7 +199,10 @@ function cardHtml(p) {
 
     <div class="foot">
       <span class="k">รีเซ็ตอีก</span>
-      <span class="t" data-reset="${p.session.resetAt || p.weekly.resetAt || ''}">--:--</span>
+      <!-- ต้องนับถอยหลังรอบเดียวกับที่หน้าปัดโชว์ ไม่งั้นการ์ดที่ยึดรายสัปดาห์
+           จะขึ้น % ของสัปดาห์แต่นับเวลาของบล็อก 5 ชม. (เห็นชัดสุดในโหมดมินิ
+           ที่เหลือแค่ตัวเลข % กับตัวนับสองอย่างนี้เท่านั้น) -->
+      <span class="t" data-reset="${(p.headline ? p.headline.resetAt : p.session.resetAt || p.weekly.resetAt) || ''}">--:--</span>
       <span class="k" style="margin-left:12px">${eta}</span>
     </div>
   </section>`;
@@ -221,10 +232,13 @@ setInterval(tick, 1000);
 
 /* ---------- ไอคอนถาดระบบพร้อมตัวเลข % ---------- */
 function paintTray() {
-  const top = state.providers.filter((p) => p.state === 'ok').sort((a, b) => b.session.pct - a.session.pct)[0];
+  // ใช้ headline เดียวกับหน้าปัด ไม่งั้นการ์ดที่ยึดโควตาเว็บ (เช่น Grok 95% แดง)
+  // จะได้ไอคอน tray เป็น 0% สีปกติ คนที่ย่อลง tray จะไม่เห็นสัญญาณเตือนเลย
+  const headline = (p) => p.headline?.pct ?? p.session.pct;
+  const top = state.providers.filter((p) => p.state === 'ok').sort((a, b) => headline(b) - headline(a))[0];
   const cv = document.getElementById('tray-canvas');
   const g = cv.getContext('2d');
-  const pct = top ? Math.round(top.session.pct) : 0;
+  const pct = top ? Math.round(headline(top)) : 0;
   const color = !top ? '#7c8aa1' : pct >= 90 ? '#ff6b6b' : pct >= 70 ? '#f5c451' : top.accent;
   g.clearRect(0, 0, 32, 32);
   g.fillStyle = color;
@@ -344,7 +358,7 @@ document.querySelectorAll('.seg-b').forEach((b) => {
 
 /* ---------- หน้าตั้งค่า ---------- */
 // การ์ดที่มีโหมดโควตาสดจากเว็บ (ล็อกอินในหน้าต่างแอป — ดู src/webquota.js)
-const WEB_HOST = { grok: 'grok.com', chatgpt: 'chatgpt.com' };
+const WEB_HOST = { claude: 'claude.ai', grok: 'grok.com', chatgpt: 'chatgpt.com' };
 const PLANS = [
   ['auto', 'อัตโนมัติ (P90)'],
   ['pro', 'Pro'],
@@ -353,14 +367,78 @@ const PLANS = [
   ['plus', 'Plus']
 ];
 
-function calNoteHtml(p) {
-  const c = p.calibration;
-  if (c && (c.session || c.weekly)) {
-    const parts = [];
-    if (c.session) parts.push(`บล็อก ≈ ${fmtTokens(c.session)}`);
-    if (c.weekly) parts.push(`สัปดาห์ ≈ ${fmtTokens(c.weekly)}`);
-    return `ลิมิตที่ปรับเทียบแล้ว: ${parts.join(' · ')} <button class="btn cal-clear" data-act="cal-clear">ล้างค่า</button>`;
+/**
+ * ข้อความ "ใช้ไป / ลิมิต" ของแถบหนึ่ง ๆ
+ *
+ * โชว์คู่ token ได้เฉพาะตอนที่นับมาในหน้าต่างเดียวกับที่ % อ้างอิงอยู่
+ * ถ้า % ของแถบนี้มาจากผู้ให้บริการแต่เรานับคนละกรอบ ตัวเลขสองฝั่งจะไม่สัมพันธ์กัน
+ * บอก % ไปตรง ๆ ดีกว่าโชว์คู่ที่หารกันแล้วไม่ได้ค่านั้น
+ *
+ * ต้องดู liveSource ของ "แถบนี้" ไม่ใช่ p.live ของทั้งการ์ด — การ์ดที่ได้โควตาสด
+ * เฉพาะรายสัปดาห์จากเว็บก็ติดธง p.live ด้วย ถ้าเช็คแค่นั้นแถบบล็อกจะโกหกว่า
+ * "0% ทางการ" ทั้งที่เป็นค่าประมาณจาก log ในเครื่องล้วน ๆ
+ *
+ * และต้องดู limitFromPct ไม่ใช่ windowSource — ถึงจะนับมาในกรอบเดียวกัน main ก็ยัง
+ * ไม่ถอดลิมิตกลับเมื่อ token เป็น 0 หรือ % ต่ำกว่า 1 (เช่นไปใช้โควตาจากเครื่องอื่น
+ * แล้วในเครื่องนี้ไม่มี log เลย) กรณีนั้นคู่ token กับ % ก็ยังคนละฐานกันอยู่ดี
+ */
+const SOURCE_WORD = { web: 'จากเว็บ', api: 'ทางการ', stale: 'ล่าสุด' };
+
+function amountLabel(p, key) {
+  const w = p[key];
+  if (w.liveSource && !w.limitFromPct) {
+    return `${Math.round(w.pct)}% ${SOURCE_WORD[w.liveSource] || 'ทางการ'}`;
   }
+  return `${fmtTokens(w.tokens)} / ${fmtTokens(w.limit)}`;
+}
+
+/**
+ * ป้ายบอกที่มาของตัวเลขบนหน้าปัด — ต้องยึด headline.source ไม่ใช่ธง p.live ของทั้งการ์ด
+ * การ์ดหนึ่งใบมีได้ทั้งค่าสดและค่าปักหมุดพร้อมกัน (Grok: โควตาแชทสด แต่รายสัปดาห์ปักไว้)
+ * ถ้าดูแค่ p.live จะขึ้น "● สด" ทั้งที่เลขบนหน้าปัดเป็นค่าที่ปักไว้เมื่อหลายวันก่อน
+ */
+function sourceBadge(p) {
+  const src = p.headline?.source;
+  if (src === 'api' || src === 'web') {
+    return '<span class="live-dot" title="% ทางการจากผู้ให้บริการโดยตรง">● สด</span>';
+  }
+  // ค่าสดที่ค้างจากรอบก่อนหน้า — บอกเวลาที่วัดได้ไปเลย ผู้ใช้จะได้รู้ว่าเก่าแค่ไหน
+  // (ตัวเลขยังเชื่อได้เป็นอย่างต่ำ เพราะ % ในรอบเดียวกันไม่มีทางลดลง)
+  if (src === 'stale') {
+    const when = p.headline.staleAt
+      ? new Date(p.headline.staleAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+      : '';
+    const why = p.liveError ? ` — ${p.liveError}` : '';
+    return `<span class="live-dot stale" title="% ทางการที่วัดได้ครั้งล่าสุดในรอบนี้ ตอนนี้ดึงค่าใหม่ไม่ได้${why}">สดล่าสุด${when ? ' ' + when : ''}</span>`;
+  }
+  if (src === 'manual') {
+    const when = p.headline.pinnedAt
+      ? `ปักไว้เมื่อ ${new Date(p.headline.pinnedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} — `
+      : '';
+    return `<span class="live-dot man" title="${when}ตัวเลขนี้ไม่ได้อัปเดตเอง ปักใหม่ได้ในหน้าตั้งค่า">ปักหมุด</span>`;
+  }
+  if (p.liveError) return `<span class="live-dot err" title="${p.liveError}">ค่าประมาณ</span>`;
+  return '';
+}
+
+function calNoteHtml(p) {
+  const list = (o) => {
+    const parts = [];
+    if (o?.session) parts.push(`บล็อก ≈ ${fmtTokens(o.session)}`);
+    if (o?.weekly) parts.push(`สัปดาห์ ≈ ${fmtTokens(o.weekly)}`);
+    return parts;
+  };
+  // ค่าที่ปรับเทียบไว้ต้องมีปุ่มล้างเสมอ แม้ตอนเปิดโหมดสด — ไม่งั้นค่าที่ค้างจากก่อนหน้า
+  // จะชนะทุกอย่างอยู่เงียบ ๆ แล้วผู้ใช้ล้างจากหน้าจอไม่ได้เลย
+  const cal = list(p.calibration);
+  if (cal.length) {
+    return `ลิมิตที่ปรับเทียบแล้ว: ${cal.join(' · ')} <button class="btn cal-clear" data-act="cal-clear">ล้างค่า</button>`;
+  }
+  // ลิมิตที่เรียนรู้เองต้องบอกให้เห็นเสมอ ไม่ใช่เฉพาะตอนเปิดสวิตช์ —
+  // ทาง rate_limits ของ Codex เรียนรู้ได้โดยผู้ใช้ไม่ต้องเปิดอะไรเลย
+  const learned = list(p.liveLimit);
+  if (learned.length) return `ลิมิตที่แอปเรียนรู้จาก % ทางการ: ${learned.join(' · ')} (เลือกแพลนเองเพื่อใช้ค่าตามแพลนแทน)`;
+  if (p.liveUsage) return 'เปิดโหมดสดอยู่ — % มาจากผู้ให้บริการโดยตรง ไม่ต้องปรับเทียบ';
   return 'เปิดหน้า usage ของผู้ให้บริการ แล้วกรอก % ที่เห็นจริง — แอปจะคำนวณลิมิตจริงย้อนกลับให้';
 }
 
@@ -384,11 +462,12 @@ function renderSettings() {
       </div>
       <div class="field">
         <label>ปรับเทียบกับ % จริง</label>
+        ${p.liveUsage ? '' : `
         <div class="cal-row">
           <input type="number" data-f="cal-session" placeholder="% บล็อกปัจจุบัน" min="0.1" max="100" step="0.1">
           <input type="number" data-f="cal-weekly" placeholder="% รายสัปดาห์" min="0.1" max="100" step="0.1">
           <button class="btn" data-act="calibrate">ปรับเทียบ</button>
-        </div>
+        </div>`}
         <p class="cal-note" data-role="cal-note">${calNoteHtml(p)}</p>
       </div>
       ${p.id === 'claude' ? `
@@ -406,9 +485,13 @@ function renderSettings() {
       ${WEB_HOST[p.id] ? `
       <div class="field" style="margin-bottom:8px">
         <label class="toggle"><input type="checkbox" data-f="liveweb" ${p.liveWeb ? 'checked' : ''}><i class="sw"></i>โควตาสดจาก ${WEB_HOST[p.id]} (ทดลอง)</label>
-        <p class="cal-note" data-role="web-note">ล็อกอิน ${WEB_HOST[p.id]} ในหน้าต่างของแอปหนึ่งครั้ง ด้วยบัญชีเดียวกับที่ใช้บนเว็บ
+        <p class="cal-note"><span data-role="web-note">${
+          p.id === 'claude'
+            ? 'ทางสำรองของโหมดเรียลไทม์ข้างบน — แอปจะถาม API ทางการก่อนเสมอ แล้วมาทางนี้เมื่อ token ของ Claude Code หมดอายุ (เกิดขึ้นเมื่อไม่ได้ใช้ CLI หลายชั่วโมง) '
+            : ''
+        }ล็อกอิน ${WEB_HOST[p.id]} ในหน้าต่างของแอปหนึ่งครั้ง ด้วยบัญชีเดียวกับที่ใช้บนเว็บ
         แล้วเปิดหน้า usage ในหน้าต่างนั้นให้แอปเรียนรู้ — session อยู่ในแอปเท่านั้น
-        ไม่แตะเบราว์เซอร์หรือ cookie อื่นใด ถ้าใช้ไม่ได้แอปจะถอยไปค่าปักหมุด/ประมาณเอง
+        ไม่แตะเบราว์เซอร์หรือ cookie อื่นใด ถ้าใช้ไม่ได้แอปจะถอยไปค่าปักหมุด/ประมาณเอง</span>
         <button class="btn" data-act="web-login">ล็อกอิน ${WEB_HOST[p.id]}</button>
         <button class="btn" data-act="web-test">ทดสอบ</button>
         <button class="btn cal-clear" data-act="web-logout">ออกจากระบบ</button></p>
@@ -421,13 +504,13 @@ function renderSettings() {
           <input type="datetime-local" data-f="man-reset" value="${dtLocal(p.manual?.resetAt)}">
           <button class="btn" data-act="pin">ปักหมุด</button>
         </div>
-        <p class="cal-note" data-role="man-note">${
+        <p class="cal-note"><span data-role="man-note">${
           p.manual && p.manual.resetAt > Date.now()
-            ? `ปักไว้ ${p.manual.pct}% รีเซ็ต ${new Date(p.manual.resetAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>`
+            ? `ปักไว้ ${p.manual.pct}% เมื่อ ${new Date(p.manual.at || p.manual.resetAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} · รีเซ็ต ${new Date(p.manual.resetAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })} — ค่านี้ไม่อัปเดตเอง ถ้าใช้งานต่อจากนั้นให้ปักใหม่`
             : p.manual
-            ? 'รอบที่ปักไว้หมดแล้ว — เปิดหน้า Usage บนเว็บดู % ใหม่แล้วปักอีกครั้ง <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>'
+            ? 'รอบที่ปักไว้หมดแล้ว — เปิดหน้า Usage บนเว็บดู % ใหม่แล้วปักอีกครั้ง'
             : 'เปิดหน้า Usage บนเว็บของผู้ให้บริการ แล้วคัดลอก % ที่ใช้ไปกับเวลารีเซ็ตมากรอก (โควตาฝั่งเว็บมองไม่เห็นจากในเครื่อง)'
-        }</p>
+        }</span>${p.manual ? ' <button class="btn cal-clear" data-act="man-clear">ล้างค่า</button>' : ''}</p>
       </div>` : ''}
       <label class="toggle"><input type="checkbox" data-f="enabled" ${p.enabled ? 'checked' : ''}><i class="sw"></i>เปิดใช้งานการ์ดนี้</label>
     </div>`
@@ -473,15 +556,28 @@ function saveDailySummary() {
   });
 }
 
+/**
+ * เปิดหน้าตั้งค่า — ต้องดึง config สดจาก main ก่อนวาดเสมอ
+ * เพราะ main แก้ config เองได้ระหว่างทาง (เช่น liveLimit ที่เรียนรู้ใหม่, endpoint ที่จำได้)
+ * ถ้าใช้ค่าที่ค้างไว้ตั้งแต่ตอนเปิดแอป ตัวเลขในหน้านี้จะเก่ากว่าความจริงจนกว่าจะรีสตาร์ต
+ */
+async function openSheet() {
+  document.getElementById('sheet').classList.add('open');
+  try {
+    config = await window.api.getConfig();
+    renderSettings();
+  } catch { /* ใช้ค่าที่มีอยู่ต่อ */ }
+}
+
 /* ---------- เหตุการณ์ ---------- */
 document.addEventListener('click', async (e) => {
   const act = e.target.closest('[data-act]')?.dataset.act;
-  if (act === 'settings') document.getElementById('sheet').classList.add('open');
+  if (act === 'settings') openSheet();
 
   if (act === 'plan') {
     // เดิมคลิกแล้วสลับแพลนทันที — โดนเผลอคลิกบ่อยจนค่าคลาดเคลื่อน
     // เปลี่ยนเป็นเปิดหน้าตั้งค่าให้ไปเลือกอย่างตั้งใจแทน
-    document.getElementById('sheet').classList.add('open');
+    openSheet();
   }
 
   if (act === 'pick') {
@@ -541,6 +637,10 @@ document.addEventListener('click', async (e) => {
     renderSettings();
   }
 
+  // ป้ายบอกสถานะพวกนี้ถูกเขียนทับด้วย textContent ทุกครั้ง — data-role จึงต้องอยู่ที่
+  // <span> ที่ครอบ "เฉพาะข้อความ" ห้ามอยู่ที่ <p> ที่มีปุ่มอยู่ข้างใน ไม่งั้นพอกดล็อกอิน
+  // เสร็จ ปุ่ม "ทดสอบ"/"ออกจากระบบ" จะหายไปทั้งแถบจนกว่าจะปิด-เปิดหน้าตั้งค่าใหม่
+  // (เจอจริง 8 ส.ค. 2026 — ข้อความบอกให้ "กดทดสอบ" ทั้งที่ปุ่มเพิ่งถูกลบไปเอง)
   if (act === 'web-login') {
     const group = e.target.closest('.pgroup');
     const note = group.querySelector('[data-role=web-note]');
@@ -560,7 +660,12 @@ document.addEventListener('click', async (e) => {
       const parts = [];
       if (r.data.weekly) parts.push(`รายสัปดาห์ ${Math.round(r.data.weekly.pct)}%`);
       if (r.data.session) parts.push(`รอบสั้น ${Math.round(r.data.session.pct)}%`);
-      note.textContent = `ได้ข้อมูลสดแล้ว ✓ ${parts.join(' · ')}`;
+      // ต่อได้แต่ไม่เจอรอบรายสัปดาห์ = เรียนรู้มาผิด endpoint (เช่นได้แค่ลิมิตแชท)
+      // การ์ดจะยังโชว์ค่าปักหมุดต่อไปโดยที่ผู้ใช้นึกว่าเป็นค่าสด ต้องบอกให้ชัด
+      note.textContent = r.data.weekly
+        ? `ได้ข้อมูลสดแล้ว ✓ ${parts.join(' · ')}`
+        : `ต่อได้แล้ว (${parts.join(' · ') || 'ไม่มีข้อมูล'}) แต่ยังไม่เจอโควตารายสัปดาห์ — ` +
+          'หน้าปัดจะยังใช้ค่าปักหมุดอยู่ ลองกดล็อกอินแล้วเปิดหน้า Usage ในหน้าต่างนั้นอีกครั้ง';
     } else {
       note.textContent = `ไม่สำเร็จ: ${r.error} — เปิดหน้าต่างล็อกอินแล้วเข้าหน้า usage หนึ่งครั้งเพื่อให้แอปเรียนรู้ แล้วกดทดสอบใหม่`;
     }
@@ -574,7 +679,7 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-document.getElementById('b-set').onclick = () => document.getElementById('sheet').classList.add('open');
+document.getElementById('b-set').onclick = () => openSheet();
 document.getElementById('s-close').onclick = () => document.getElementById('sheet').classList.remove('open');
 document.getElementById('sheet').onclick = (e) => {
   if (e.target.id === 'sheet') e.target.classList.remove('open');
@@ -617,6 +722,10 @@ document.addEventListener('change', async (e) => {
   if (f === 'liveweb') config = await window.api.setProvider(group.dataset.id, { liveWeb: e.target.checked });
   if (f === 'enabled') config = await window.api.setProvider(group.dataset.id, { enabled: e.target.checked });
   if (f === 'root') config = await window.api.setProvider(group.dataset.id, { roots: [e.target.value] });
+  // สวิตช์โหมดสดเปลี่ยนโครงของแผงตั้งค่า (ช่องปรับเทียบโผล่/หาย) ต้องวาดใหม่
+  // ไม่งั้นปิดโหมดสดแล้วช่องปรับเทียบไม่กลับมาจนกว่าจะรีสตาร์ตแอป —
+  // การ์ด Claude หนักสุดเพราะไม่มีส่วนปักหมุดที่จะไปกระตุ้นให้วาดใหม่ได้เลย
+  if (f === 'live' || f === 'liveweb') renderSettings();
 });
 
 window.api.onUsage((d) => {

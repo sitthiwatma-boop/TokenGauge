@@ -24,7 +24,12 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'max5',
     calibration: null, // { session, weekly, at } — ลิมิตจริงที่ผู้ใช้ปรับเทียบเอง มีค่าแล้วจะชนะ preset
+    liveLimit: null, // { session, weekly, at } — ลิมิตที่แอปเรียนรู้เองจาก % ทางการ ใช้ตอน API ล่ม
+    // { source, session:{pct,resetAt,windowMs,at}, weekly:{...} } — % สดล่าสุดที่วัดได้
+    // ใช้เป็นพื้นตอนดึงสดไม่สำเร็จ ตราบใดที่ยังไม่ถึงเวลารีเซ็ต (ดู applyStale ใน main.js)
+    liveSnapshot: null,
     liveUsage: false, // opt-in: ดึง % ทางการจาก API ของ Anthropic (อ่าน token ของ Claude Code + ต่อเน็ต)
+    liveWeb: false, // opt-in ทดลอง: % สดจาก claude.ai ผ่าน session ที่ล็อกอินในแอปเอง (ทางสำรองของ liveUsage)
     windows: { session: true, weekly: true }
   },
   chatgpt: {
@@ -38,6 +43,8 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'auto',
     calibration: null,
+    liveLimit: null,
+    liveSnapshot: null, // % สดล่าสุดที่วัดได้ — ใช้เป็นพื้นตอนดึงสดไม่สำเร็จ
     liveUsage: false, // opt-in ทดลอง: ถาม % ทางการจาก backend ของ ChatGPT ด้วย token ของ Codex
     liveWeb: false, // opt-in ทดลอง: % สดจากเว็บผ่าน session ที่ล็อกอินในแอปเอง (src/webquota.js)
     manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ
@@ -58,6 +65,8 @@ const DEFAULT_PROVIDERS = {
     cacheReadWeight: 0.1,
     plan: 'auto',
     calibration: null,
+    liveLimit: null,
+    liveSnapshot: null, // % สดล่าสุดที่วัดได้ — ใช้เป็นพื้นตอนดึงสดไม่สำเร็จ
     manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ (ใช้เมื่อไม่เปิด liveWeb)
     liveWeb: false, // opt-in ทดลอง: % สดจากเว็บผ่าน session ที่ล็อกอินในแอปเอง (src/webquota.js)
     windows: { session: true, weekly: true }

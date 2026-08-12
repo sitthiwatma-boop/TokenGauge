@@ -14,10 +14,17 @@ const os = require('os');
 const https = require('https');
 
 const CACHE_MS = 120 * 1000; // กันยิง API ถี่เกิน แม้ผู้ใช้ตั้งรีเฟรช 10 วิ
+// ผลที่ล้มเหลวเก็บสั้นกว่ามาก: เคสที่เจอบ่อยคือเปิดแอปพร้อม Windows แล้ว token ของ CLI
+// ยังไม่ถูกต่ออายุ ยิงครั้งแรกโดน 401 — ถ้าแคช error ยาว 2 นาทีจะลองใหม่ไม่ได้เลย
+// แต่ต้องถอยยาวขึ้นเมื่อล้มติดกัน ไม่งั้น token ที่หมดอายุถาวรจะถูกยิงซ้ำทั้งวัน
+// (401 ไม่เข้าเงื่อนไข backoff ของ 429) — ค่าแรกสั้นพอสำหรับเคสตอนบูตเท่านั้น
+const ERR_CACHE_STEPS = [12 * 1000, 30 * 1000, 60 * 1000, 120 * 1000];
+const errWait = (streak) => ERR_CACHE_STEPS[Math.min(streak, ERR_CACHE_STEPS.length - 1)];
 const STALE_MS = 15 * 60 * 1000; // ค่าดีล่าสุดยังเชื่อถือได้ภายใน 15 นาที
 const BACKOFF_MS = 10 * 60 * 1000; // โดน 429 แล้วพักยาว
 
-let cache = { at: 0, data: null, error: null };
+let cache = { at: 0, data: null, error: null, wait: 0 };
+let errStreak = 0;
 let lastGood = { at: 0, data: null }; // เก็บผลสำเร็จล่าสุดไว้ใช้ตอน API ล่ม จะได้ไม่ดิ่งไปค่าประมาณ
 let backoffUntil = 0;
 
@@ -77,20 +84,21 @@ function windowOf(json, names) {
   return null;
 }
 
-function normalize(w) {
+/** windowMs = ความยาวหน้าต่าง ใช้ย้อนกลับไปหาจุดเริ่มรอบ (null = ไม่บอก ให้ผู้เรียกเดาเอง) */
+function normalize(w, windowMs = null) {
   if (!w) return null;
   const pct = Number(w.utilization ?? w.used_pct ?? w.percent);
   if (!isFinite(pct)) return null;
   const reset = w.resets_at ? Date.parse(w.resets_at) : null;
-  return { pct: Math.max(0, Math.min(999, pct)), resetAt: isFinite(reset) ? reset : null };
+  return { pct: Math.max(0, Math.min(999, pct)), resetAt: isFinite(reset) ? reset : null, windowMs };
 }
+
+const HOUR = 3600 * 1000;
 
 async function fetchLive() {
   const now = Date.now();
-  if (now - cache.at < CACHE_MS) {
-    if (cache.error) throw new Error(cache.error);
-    if (cache.data) return cache.data;
-  }
+  if (cache.error && now - cache.at < cache.wait) throw new Error(cache.error);
+  if (cache.data && now - cache.at < CACHE_MS) return cache.data;
   // ช่วงพักหลังโดน 429: เสิร์ฟค่าดีล่าสุดถ้ายังไม่เก่าเกิน ไม่ยิงซ้ำ
   if (now < backoffUntil) {
     if (lastGood.data && now - lastGood.at < STALE_MS) return lastGood.data;
@@ -99,25 +107,81 @@ async function fetchLive() {
   try {
     const json = await request(readAccessToken());
     const data = {
-      session: normalize(windowOf(json, ['five_hour', 'fiveHour', 'session'])),
-      weekly: normalize(windowOf(json, ['seven_day', 'sevenDay', 'weekly'])),
+      session: normalize(windowOf(json, ['five_hour', 'fiveHour', 'session']), 5 * HOUR),
+      weekly: normalize(windowOf(json, ['seven_day', 'sevenDay', 'weekly']), 7 * 24 * HOUR),
       weeklyModel: normalize(windowOf(json, ['seven_day_opus', 'seven_day_oauth_apps', 'seven_day_sonnet']))
     };
     if (!data.session && !data.weekly) throw new Error('โครงสร้างคำตอบ API ไม่ตรงที่คาด');
-    cache = { at: now, data, error: null };
+    cache = { at: now, data, error: null, wait: 0 };
     lastGood = { at: now, data };
+    errStreak = 0;
     return data;
   } catch (err) {
     const msg = String(err.message || err);
     if (msg.includes('429')) backoffUntil = now + BACKOFF_MS;
     // API ล่มชั่วคราว แต่ค่าดีล่าสุดยังสดพอ → ใช้ต่อ ดีกว่าสลับไปค่าประมาณที่แกว่งแรง
     if (lastGood.data && now - lastGood.at < STALE_MS) {
-      cache = { at: now, data: lastGood.data, error: null };
+      cache = { at: now, data: lastGood.data, error: null, wait: 0 };
       return lastGood.data;
     }
-    cache = { at: now, data: null, error: msg };
+    cache = { at: now, data: null, error: msg, wait: errWait(errStreak++) };
     throw err;
   }
+}
+
+/* ---------- ค่าสดล่าสุดที่ยังใช้อ้างอิงได้ ----------
+ * โหมดสดล้มได้เป็นเรื่องปกติ (token ของ CLI หมดอายุเมื่อไม่ได้ใช้ CLI หลายชั่วโมง)
+ * ปัญหาคือค่าประมาณจาก log ในเครื่อง "ไม่รู้จัก" โควตาที่ถูกใช้จากเว็บหรือเครื่องอื่นเลย
+ * การ์ดจึงดิ่งจาก 29% เหลือ 0% ทั้งที่รอบเดิมยังไม่รีเซ็ต (เจอจริง 7 ส.ค. 2026)
+ *
+ * ภายในรอบเดียวกัน % มีแต่เพิ่ม ไม่มีลด — ค่าสดล่าสุดจึงเป็น "พื้น" ที่ถูกต้องเสมอ
+ * เงื่อนไข: ต้องยังไม่ถึงเวลารีเซ็ต (รอบที่หมุนไปแล้วบอกอะไรไม่ได้) และไม่เก่าเกิน TTL
+ */
+const SNAP_TTL = 24 * 3600 * 1000;
+
+/** คัดเฉพาะหน้าต่างที่ยังอ้างอิงได้ — คืน null ถ้าใช้ไม่ได้สักอัน */
+function usableSnapshot(snap, now = Date.now()) {
+  if (!snap || typeof snap !== 'object') return null;
+  const out = {};
+  for (const k of ['session', 'weekly']) {
+    const w = snap[k];
+    // Number(null) = 0 ซึ่ง isFinite ผ่าน — ต้องกันค่าว่างออกก่อน ไม่งั้นจะกลายเป็น "0%" ปลอม ๆ
+    if (!w || w.pct == null || w.pct === '' || !isFinite(Number(w.pct))) continue;
+    if (!(w.resetAt > now)) continue; // รอบหมุนไปแล้ว
+    if (w.at && now - w.at > SNAP_TTL) continue; // เก่าเกินกว่าจะเดาว่ายังใกล้เคียง
+    out[k] = { pct: Number(w.pct), resetAt: w.resetAt, at: w.at || 0, windowMs: w.windowMs || null };
+  }
+  if (!out.session && !out.weekly) return null;
+  out.source = snap.source === 'web' ? 'web' : 'api';
+  return out;
+}
+
+/**
+ * ทับ % ประมาณด้วยค่าสดล่าสุดเมื่อดึงสดไม่สำเร็จ (ผลจาก usableSnapshot เท่านั้น)
+ *
+ * ค่าประมาณที่สูงกว่าให้ชนะ — แปลว่ามีการใช้เพิ่มหลังวัดครั้งสุดท้าย
+ * ห้ามถอดลิมิตกลับจาก % นี้เด็ดขาด (ไม่ตั้ง limitFromPct) เพราะ % คนละเวลากับ
+ * token ที่นับได้ตอนนี้ และห้ามตั้ง p.live เพราะการ์ดต้องไม่ประกาศว่า "สด"
+ */
+function applyStale(p, snap) {
+  if (!p || !snap) return p;
+  for (const k of ['session', 'weekly']) {
+    const s = snap[k];
+    if (!s || !p[k]) continue;
+    p[k].pct = Math.max(Number(p[k].pct) || 0, s.pct);
+    p[k].resetAt = s.resetAt;
+    p[k].liveSource = 'stale';
+    p[k].staleAt = s.at || null;
+  }
+  // เวลาที่ทำนายไว้คิดจากลิมิตประมาณในเครื่อง ซึ่งคนละฐานกับ % ที่เพิ่งทับลงไป
+  // บอกผิดแย่กว่าไม่บอก (เหตุผลเดียวกับ applyLive ตอนไม่มี limitFromPct)
+  if (snap.session) p.etaMs = null;
+  // การ์ดที่เคยยึดรายสัปดาห์จากเว็บต้องยึดต่อ ไม่งั้นหน้าปัดสลับไปโชว์บล็อก 5 ชม.
+  // ตอนเว็บล้ม แล้วตัวเลขบนหน้าปัดกระโดดทั้งที่ผู้ใช้ไม่ได้ทำอะไร
+  // เงื่อนไขต้องตรงกับ applyLiveWeb ใน main.js เป๊ะ ๆ (Claude ยึดบล็อก 5 ชม. ถ้ามีค่ารอบสั้น
+  // ส่วน Grok/ChatGPT ยึดรายสัปดาห์เสมอ เพราะ session ของฝั่งนั้นคือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
+  if (snap.source === 'web') p.webGauge = p.id === 'claude' && snap.session ? false : !!snap.weekly;
+  return p;
 }
 
 /* ---------- ChatGPT (Codex CLI) — % ทางการจาก log ในเครื่อง ไม่ต้องต่อเน็ต ----------
@@ -170,7 +234,11 @@ function mapCodexWindow(w, ts) {
   // โควตานี้แชร์กับ Work / Workspace Agents / ChatGPT for Excel ฝั่งเว็บ
   // ซึ่งกินโควตาได้โดยไม่ทิ้งร่องรอยในเครื่องเลย (เคยเดาผิดมาแล้ว)
   if (Date.now() >= resetAt) return null;
-  return { pct: Math.max(0, Math.min(999, w.used_percent)), resetAt };
+  return {
+    pct: Math.max(0, Math.min(999, w.used_percent)),
+    resetAt,
+    windowMs: (w.window_minutes || 0) * 60000 || null
+  };
 }
 
 /** คืน { session, weekly } หรือ null ถ้าไม่พบข้อมูล rate_limits เลย */
@@ -216,8 +284,9 @@ function fetchCodexLive(roots) {
  */
 const CODEX_API_PATHS = ['/backend-api/codex/usage', '/backend-api/wham/usage'];
 
-let codexApi = { at: 0, data: null, error: null };
+let codexApi = { at: 0, data: null, error: null, wait: 0 };
 let codexApiLastGood = { at: 0, data: null };
+let codexErrStreak = 0;
 let codexApiBackoffUntil = 0;
 
 function readCodexToken() {
@@ -277,24 +346,26 @@ function parseCodexApi(json) {
   for (const w of [rl.primary, rl.secondary]) {
     if (!w || typeof w.used_percent !== 'number') continue;
     const resetAt = w.resets_at ? w.resets_at * 1000 : null;
-    const v = { pct: Math.max(0, Math.min(999, w.used_percent)), resetAt };
+    const v = {
+      pct: Math.max(0, Math.min(999, w.used_percent)),
+      resetAt,
+      windowMs: (w.window_minutes || 0) * 60000 || null
+    };
     if ((w.window_minutes || 0) <= 600) out.session = v;
     else out.weekly = v;
   }
   // เผื่อโครงแบบเดียวกับของ Anthropic
   if (!out.session && !out.weekly) {
-    out.session = normalize(windowOf(rl, ['five_hour', 'session']));
-    out.weekly = normalize(windowOf(rl, ['seven_day', 'weekly']));
+    out.session = normalize(windowOf(rl, ['five_hour', 'session']), 5 * HOUR);
+    out.weekly = normalize(windowOf(rl, ['seven_day', 'weekly']), 7 * 24 * HOUR);
   }
   return out.session || out.weekly ? out : null;
 }
 
 async function fetchCodexApiLive() {
   const now = Date.now();
-  if (now - codexApi.at < CACHE_MS) {
-    if (codexApi.error) throw new Error(codexApi.error);
-    if (codexApi.data) return codexApi.data;
-  }
+  if (codexApi.error && now - codexApi.at < codexApi.wait) throw new Error(codexApi.error);
+  if (codexApi.data && now - codexApi.at < CACHE_MS) return codexApi.data;
   if (now < codexApiBackoffUntil) {
     if (codexApiLastGood.data && now - codexApiLastGood.at < STALE_MS) return codexApiLastGood.data;
     throw new Error(codexApi.error || 'พัก API ชั่วคราว');
@@ -308,8 +379,9 @@ async function fetchCodexApiLive() {
       if (r.status === 200) {
         const data = parseCodexApi(r.json);
         if (!data) continue;
-        codexApi = { at: now, data, error: null };
+        codexApi = { at: now, data, error: null, wait: 0 };
         codexApiLastGood = { at: now, data };
+        codexErrStreak = 0;
         return data;
       }
       if (r.status === 401 || r.status === 403) {
@@ -326,10 +398,10 @@ async function fetchCodexApiLive() {
   } catch (err) {
     const msg = String(err.message || err);
     if (codexApiLastGood.data && now - codexApiLastGood.at < STALE_MS) {
-      codexApi = { at: now, data: codexApiLastGood.data, error: null };
+      codexApi = { at: now, data: codexApiLastGood.data, error: null, wait: 0 };
       return codexApiLastGood.data;
     }
-    codexApi = { at: now, data: null, error: msg };
+    codexApi = { at: now, data: null, error: msg, wait: errWait(codexErrStreak++) };
     throw err;
   }
 }
@@ -359,10 +431,28 @@ function grokResetAt(o, now) {
   return waitSec > 0 ? now + waitSec * 1000 : null;
 }
 
-function grokWindow(o, now) {
+/**
+ * บางเจ้าไม่บอกขนาดหน้าต่างมาในก้อนข้อมูล แต่บอกผ่าน "ชื่อคีย์" ของก้อนนั้นแทน
+ * (claude.ai ใช้ five_hour / seven_day) ถ้าไม่เดาจากชื่อ ทั้งสองก้อนจะตกไปช่องรายสัปดาห์
+ * แล้วรอบ 5 ชม. จะหายไปทั้งที่ข้อมูลมาครบ
+ */
+const WINDOW_HINT = [
+  [/five[_-]?hour|5[_-]?h(our)?\b|session/i, 5 * 3600],
+  [/seven[_-]?day|7[_-]?d(ay)?\b|weekly|week/i, 7 * 24 * 3600]
+];
+
+function hintSec(key) {
+  for (const [re, sec] of WINDOW_HINT) {
+    if (re.test(key || '')) return sec;
+  }
+  return 0;
+}
+
+function grokWindow(o, now, keyHint = 0) {
   const winSec =
     Number(o.windowSizeSeconds ?? o.window_size_seconds) ||
-    (Number(o.window_minutes ?? o.windowMinutes) || 0) * 60;
+    (Number(o.window_minutes ?? o.windowMinutes) || 0) * 60 ||
+    keyHint;
   // แบบที่ 1: คู่ remaining/total หรือ used/limit — คำนวณ % เอง
   const total = Number(o.totalQueries ?? o.total_queries ?? o.totalTokens ?? o.total ?? o.limit ?? o.max);
   const remaining = Number(o.remainingQueries ?? o.remaining_queries ?? o.remainingTokens ?? o.remaining);
@@ -378,8 +468,9 @@ function grokWindow(o, now) {
     }
   }
   // แบบที่ 2: บอกเปอร์เซ็นต์ตรง ๆ (แบบหน้า Usage — "63% used" หรือ "0% remaining")
+  // claude.ai ใช้คำว่า utilization กับค่าเดียวกันนี้ (0–100)
   for (const [k, v] of Object.entries(o)) {
-    if (typeof v === 'object' || !/percent|pct/i.test(k)) continue;
+    if (typeof v === 'object' || !/percent|pct|utilization/i.test(k)) continue;
     const raw = Number(v);
     if (isFinite(raw) && raw >= 0 && raw <= 100) {
       // คีย์แบบ "remaining/left" คือ % ที่เหลือ ต้องกลับด้านเป็น % ที่ใช้ไป
@@ -394,13 +485,13 @@ function grokWindow(o, now) {
 function parseGrokRateLimits(json, now = Date.now()) {
   if (!json || typeof json !== 'object') return null;
   const wins = [];
-  const walk = (o, depth) => {
+  const walk = (o, depth, key) => {
     if (!o || typeof o !== 'object' || depth > 3) return;
-    const w = grokWindow(o, now);
+    const w = grokWindow(o, now, hintSec(key));
     if (w) return void wins.push(w);
-    for (const v of Object.values(o)) walk(v, depth + 1);
+    for (const [k, v] of Object.entries(o)) walk(v, depth + 1, k);
   };
-  walk(json, 0);
+  walk(json, 0, '');
   if (!wins.length) return null;
   // ≤10 ชม. = รอบสั้น (session), ยาวกว่าหรือไม่บอกขนาด = รายสัปดาห์ (ช่องเดียวกับปักหมุด)
   // มีหลายหน้าต่างในกลุ่มเดียวกัน เอาอันที่ใช้ไปมากสุด — ตัวที่บีบเราจริง
@@ -444,4 +535,69 @@ function parseGrokText(text, now = Date.now()) {
   return found ? out : null;
 }
 
-module.exports = { fetchLive, fetchCodexLive, fetchCodexApiLive, parseGrokRateLimits, parseGrokText };
+/**
+ * อ่านโควตาจาก "ข้อความที่แสดงบนหน้า usage" — ทางสุดท้ายเมื่อ endpoint อ่านไม่ได้
+ *
+ * grok.com ย้ายหน้า Usage ไปใช้ gRPC-web + protobuf แล้ว (8 ส.ค. 2026) คำขอเป็นไบนารี
+ * ที่ replay ไม่ได้และไม่มี schema จะถอด เหลือทางเดียวคืออ่านตัวเลขที่ผู้ใช้เห็นบนจอ
+ * (ฝั่งเปิดหน้าต่างอยู่ใน src/webquota.js — แยกตัวแปลงมาไว้ที่นี่ให้เทสต์ได้ด้วย node เปล่า)
+ *
+ * รูปแบบที่รองรับ: "70% used" คู่กับ "Resets August 9, 2026 at 2:52 PM"
+ * เวลาที่หน้าเว็บแสดงเป็นเวลาท้องถิ่นของเครื่องอยู่แล้ว Date.parse จึงตรงกับที่ผู้ใช้เห็น
+ */
+const PAGE_SPLIT = '@@SPLIT@@'; // ฝั่ง webquota ส่ง innerText กับ textContent มาในก้อนเดียว
+
+function parseUsagePage(text, now = Date.now()) {
+  if (!text) return null;
+  // ลองทีละก้อน — ห้ามแกะรวมกัน ไม่งั้นรายการย่อยจะถูกนับสองรอบตอนบวกผลรวม
+  for (const chunk of String(text).split(PAGE_SPLIT)) {
+    const r = parseUsageChunk(chunk, now);
+    if (r) return r;
+  }
+  return null;
+}
+
+function parseUsageChunk(s, now) {
+  if (!s) return null;
+  let pct = null;
+  // ยอมให้ไม่มีช่องว่างคั่น เพราะ textContent เชื่อม element ติดกันหมด ("70%used")
+  const m = s.match(/(\d+(?:\.\d+)?)\s*%\s*used/i);
+  if (m) {
+    pct = parseFloat(m[1]);
+  } else {
+    /* ตัวเลขรวมของ grok.com วาดด้วย CSS pseudo-element — ไม่มีใน DOM เลยทั้ง innerText
+     * และ textContent (ยืนยันแล้ว 8 ส.ค. 2026: ได้มาแต่ "Weekly SuperGrok Limitused")
+     * แต่รายการย่อยเป็นข้อความจริง และผลรวมของมันคือเลขเดียวกับที่หน้าเว็บโชว์
+     * ("Imagine 69%" + "Chat 1%" = 70%) — บวกเองจึงตรงกับที่ผู้ใช้เห็น */
+    const i = s.search(/Weekly/i);
+    if (i < 0) return null;
+    const j = s.search(/Extra Usage Credits/i);
+    const zone = s.slice(i, j > i ? j : i + 600);
+    const parts = zone.match(/\d+(?:\.\d+)?\s*%/g);
+    if (!parts || !parts.length) return null;
+    pct = parts.reduce((a, p) => a + parseFloat(p), 0);
+    // เกิน 100 = อ่านโซนผิด (หน้าเว็บไม่เคยโชว์เกิน 100%) — ไม่เดาดีกว่าเดาผิด
+    if (pct > 100) return null;
+  }
+  if (!isFinite(pct)) return null;
+  const r = s.match(/Resets?\s+(?:on\s+)?([A-Za-z]+\s+\d{1,2},\s*\d{4}(?:\s+at)?\s+\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?)/);
+  let resetAt = null;
+  if (r) {
+    const t = Date.parse(r[1].replace(/\s+at\s+/i, ' '));
+    // รอบที่ผ่านไปแล้วห้ามเอามาใช้ (หน้าเว็บอาจค้างค่าเก่าอยู่) — ปล่อยเป็น null
+    // ให้ applyLiveWeb ยืมเวลารีเซ็ตจากค่าปักหมุดแทน
+    if (isFinite(t) && t > now) resetAt = t;
+  }
+  return { session: null, weekly: { pct: Math.max(0, Math.min(999, pct)), resetAt } };
+}
+
+module.exports = {
+  fetchLive,
+  fetchCodexLive,
+  fetchCodexApiLive,
+  parseGrokRateLimits,
+  parseGrokText,
+  parseUsagePage,
+  usableSnapshot,
+  applyStale
+};

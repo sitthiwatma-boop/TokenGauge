@@ -17,7 +17,7 @@
 const { app, BrowserWindow, session } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { parseGrokText } = require('./liveusage');
+const { parseGrokText, parseUsagePage } = require('./liveusage');
 
 // ใช้ UA ของ Firefox กับทุก session — Google ปฏิเสธหน้าล็อกอินใน embedded browser
 // และจับได้ถ้า header กับ navigator.userAgent ไม่ตรงกัน จึงต้องเป็น Firefox ทุกจุด
@@ -30,6 +30,17 @@ const STALE_MS = 15 * 60 * 1000;
 const BACKOFF_MS = 10 * 60 * 1000;
 
 const PROVIDERS = {
+  // claude.ai — ทางเลือกแทนโหมด API เมื่อ token ของ Claude Code หมดอายุ
+  // (Claude Code ต่ออายุ token ให้เฉพาะตอนใช้ CLI คนที่ใช้ฝั่งเว็บเป็นหลักจึงสดไม่ได้เลย)
+  // เปิดหน้า usage ให้ตั้งแต่แรกเพื่อให้ตัวเรียนรู้ endpoint ได้ของจริงทันทีที่ล็อกอินเสร็จ
+  claude: {
+    partition: 'persist:claudeweb',
+    home: 'https://claude.ai/settings/usage',
+    origin: 'https://claude.ai',
+    urlRe: /^https:\/\/(www\.)?claude\.ai\//,
+    cookieDomains: [/(^|\.)claude\.ai$/, /(^|\.)anthropic\.com$/],
+    fallbackTries: [] // endpoint ไม่ทางการ เดาไม่ได้ — พึ่งการเรียนรู้จากหน้า usage เท่านั้น
+  },
   grok: {
     partition: 'persist:grokweb', // ชื่อเดิมจากรุ่นแรก — session ที่ผู้ใช้ล็อกอินไว้ต้องไม่หาย
     home: 'https://grok.com/',
@@ -40,7 +51,9 @@ const PROVIDERS = {
     fallbackTries: [
       { url: 'https://grok.com/rest/rate-limits', method: 'POST', postData: '{"requestKind":"DEFAULT","modelName":"grok-4"}' },
       { url: 'https://grok.com/rest/rate-limits', method: 'POST', postData: '{"requestKind":"DEFAULT","modelName":"grok-3"}' }
-    ]
+    ],
+    // Weekly SuperGrok Limit อ่านจาก endpoint ไม่ได้แล้ว — ดู DOM_READ_JS ว่าทำไม
+    domUsage: 'https://grok.com/?_s=usage'
   },
   chatgpt: {
     partition: 'persist:chatgptweb',
@@ -68,6 +81,8 @@ function st(id) {
       cache: { at: 0, data: null, error: null },
       lastGood: { at: 0, data: null },
       backoffUntil: 0,
+      sniffLog: null, // บันทึก network ของหน้าต่างล็อกอินรอบล่าสุด (เขียนลงไฟล์ตอนปิดหน้าต่าง)
+      dom: { at: 0, data: null, inflight: null }, // ค่าที่อ่านจากหน้าเว็บ (แคชนานกว่าปกติ)
       bearer: { at: 0, token: null } // token ชั่วคราวในหน่วยความจำ — ห้ามเขียนลงดิสก์
     };
   }
@@ -127,10 +142,38 @@ function scoreOf(req, parsed) {
   return s;
 }
 
+/* ---------- บันทึกสิ่งที่ตัวเรียนรู้เห็น ----------
+ * endpoint ของทุกเจ้าไม่ทางการและเปลี่ยนบ่อย เวลาเรียนรู้ไม่เจอ (เจอจริง 8 ส.ค. 2026:
+ * หน้า Usage ของ grok.com ใช้คนละ endpoint กับหน้าแชท แอปเลยจำแต่โควตาแชทรอบ 2 ชม.
+ * แล้วการ์ดถอยไปใช้ค่าปักหมุดเงียบ ๆ) ต้องเห็นของจริงถึงจะรู้ว่าต้องแกะยังไง
+ * ไฟล์อยู่ใน userData ของเครื่องนี้เท่านั้น ไม่ถูกส่งออกไปไหน และค่าที่หน้าตาเหมือน
+ * token/cookie ถูกปิดบังก่อนเขียนเสมอ (หน้าเว็บพวกนี้ส่ง accessToken มากับ JSON ด้วย)
+ */
+const SNIFF_MAX = 80; // จำนวนคำขอที่บันทึก — พอเห็นภาพหน้า usage โดยไฟล์ไม่บวม
+const SNIFF_BODY = 3000; // ตัวอักษรต่อคำตอบหนึ่งรายการ
+const SECRET_RE = /("[^"]*(?:token|secret|password|authorization|cookie|api[-_]?key)[^"]*"\s*:\s*)"[^"]*"/gi;
+
+function maskSecrets(s) {
+  return String(s).replace(SECRET_RE, '$1"***"');
+}
+
+function writeSniffLog(id) {
+  const s = st(id);
+  if (!s.sniffLog?.length) return;
+  try {
+    fs.writeFileSync(
+      path.join(app.getPath('userData'), `debug-sniff-${id}.txt`),
+      s.sniffLog.join('\n'),
+      'utf8'
+    );
+  } catch { /* เขียน debug ไม่ได้ ไม่เป็นไร */ }
+}
+
 function attachSniffer(id, wc) {
   const s = st(id);
   const dbg = wc.debugger;
   dbg.attach('1.3');
+  s.sniffLog = [`=== network ของหน้าต่างล็อกอิน ${id} (ค่าที่เหมือน token ถูกปิดบังแล้ว) ===`];
   const reqs = new Map(); // requestId → { url, method, postData, headers }
   dbg.on('message', async (_e, method, params) => {
     try {
@@ -147,9 +190,16 @@ function attachSniffer(id, wc) {
       } else if (method === 'Network.responseReceived') {
         // สนใจเฉพาะคำตอบที่เป็นข้อความ/JSON/RSC — ตัดไฟล์สื่อออกตั้งแต่ต้น
         const req = reqs.get(params.requestId);
-        if (req && !/json|text|x-component/i.test(params.response?.mimeType || '')) {
+        if (!req) return;
+        const mime = params.response?.mimeType || '';
+        if (!/json|text|x-component/i.test(mime)) {
+          if (s.sniffLog.length < SNIFF_MAX) {
+            s.sniffLog.push(`--- ${req.method} ${req.url}\n[ข้าม: mimeType ${mime}]`);
+          }
           reqs.delete(params.requestId);
+          return;
         }
+        req.mime = mime;
       } else if (method === 'Network.loadingFinished') {
         const req = reqs.get(params.requestId);
         if (!req) return;
@@ -157,6 +207,16 @@ function attachSniffer(id, wc) {
         const { body, base64Encoded } = await dbg.sendCommand('Network.getResponseBody', { requestId: params.requestId });
         const text = base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body;
         const parsed = parseGrokText(text);
+        if (s.sniffLog.length < SNIFF_MAX) {
+          const sc = parsed ? scoreOf(req, parsed) : -1;
+          s.sniffLog.push(
+            `--- ${req.method} ${req.url}\n` +
+              `mime ${req.mime} · ${text.length} ตัวอักษร · ` +
+              (parsed ? `แกะได้ ${JSON.stringify(parsed)} (คะแนน ${sc})` : 'แกะไม่ออก') +
+              (req.postData ? `\nbody ที่ส่งไป: ${maskSecrets(req.postData).slice(0, 400)}` : '') +
+              `\n${maskSecrets(text).slice(0, SNIFF_BODY)}`
+          );
+        }
         if (!parsed) return;
         const sc = scoreOf(req, parsed);
         if (sc > s.discoveredScore) {
@@ -199,11 +259,16 @@ function openLogin(id, parent) {
     s.loginWin.loadURL(PROVIDERS[id].home);
     try {
       attachSniffer(id, s.loginWin.webContents); // เรียนรู้ endpoint หน้า usage ถ้าผู้ใช้เปิดดู
-    } catch { /* debugger ไม่พร้อม — ข้ามได้ ฟีเจอร์หลักยังทำงาน */ }
+    } catch (err) {
+      // debugger attach ไม่ได้ = ไม่มีทางเรียนรู้ endpoint เลย ฟีเจอร์หลักยังทำงานด้วย
+      // fallback ก็จริง แต่ห้ามเงียบ ไม่งั้นไล่บั๊กตาบอด (เคยนั่งหาว่าทำไมไม่เรียนรู้สักที)
+      s.sniffLog = [`=== attach debugger ไม่สำเร็จ: ${String(err.message || err)}`];
+    }
     s.loginWin.on('closed', () => {
       s.loginWin = null;
       s.cache = { at: 0, data: null, error: null }; // ล็อกอินใหม่แล้ว ให้ถามซ้ำได้ทันที
       s.backoffUntil = 0;
+      writeSniffLog(id); // ทิ้งบันทึกไว้ให้ไล่ดูตอนเรียนรู้ไม่เจอ
       resolve(true);
     });
   });
@@ -282,6 +347,126 @@ async function requestOnce(id, d) {
     });
 }
 
+/* ---------- อ่านตัวเลขจากหน้าเว็บโดยตรง (ทางสุดท้ายเมื่อ endpoint อ่านไม่ได้) ----------
+ * grok.com ย้ายหน้า Usage ไปใช้ gRPC-web + protobuf แล้ว (เห็นจาก debug-sniff-grok.txt
+ * 8 ส.ค. 2026: GetGrokCreditsConfig / GetPrepaidBenefits ตอบเป็น application/grpc-web+proto)
+ * คำขอเป็นไบนารีที่ replay ผ่านตัวดักไม่ครบ และไม่มี schema จะถอด — วิธีเรียนรู้ endpoint
+ * แล้วแกะ JSON จึงใช้กับมันไม่ได้อีกต่อไป ส่วน /rest/rate-limits ที่เหลือให้แค่โควตาแชท
+ * 2 ชม. ไม่มี Weekly SuperGrok Limit อยู่ในนั้นเลย
+ *
+ * จึงเปิดหน้า usage ในหน้าต่างที่ซ่อนไว้ (session เดียวกับที่ผู้ใช้ล็อกอินในแอป) แล้วอ่าน
+ * "ตัวเลขที่ผู้ใช้เห็นบนหน้าจอ" ตรง ๆ — ได้ค่าเดียวกับหน้าเว็บเสมอ ไม่ต้องเดาโครงข้อมูล
+ * ข้อแลกเปลี่ยน: หนักกว่าการยิง fetch มาก จึงแคชนานกว่าปกติและกันวิ่งซ้อนไว้
+ */
+const DOM_CACHE_MS = 10 * 60 * 1000;
+const DOM_TIMEOUT_MS = 40 * 1000; // SPA + Cloudflare ใช้เวลาได้หลายวินาทีกว่าจะ render
+const DOM_POLL_MS = 1500;
+
+/**
+ * สคริปต์ที่รันในหน้าเว็บของเจ้าของ session เอง — อ่านข้อความที่แสดงอยู่เท่านั้น
+ * ห้ามแตะ cookie/localStorage และห้ามส่งอะไรออกจากหน้านั้นเด็ดขาด
+ * ตัวแปลงข้อความเป็นตัวเลขอยู่ที่ parseUsagePage ใน liveusage.js (เทสต์ได้ด้วย node เปล่า)
+ *
+ * `?_s=usage` เปิดกล่องตั้งค่าค้างไว้ที่หน้าแรก (General) ไม่ได้พาไปแท็บ Usage เอง
+ * (เห็นจาก debug-dom-grok.txt 8 ส.ค. 2026 — ได้มาแต่รายชื่อเมนู ไม่มีตัวเลขสักตัว)
+ * จึงต้องกดเมนูให้เหมือนที่ผู้ใช้ทำ แล้วรอบ poll ถัดไปค่อยอ่านผล — คลิกเมนูของหน้า
+ * ตัวเองเท่านั้น ไม่กรอก ไม่ส่ง ไม่เปลี่ยนค่าอะไรบนบัญชีผู้ใช้
+ */
+const DOM_READ_JS = `(() => {
+  const b = document.body;
+  if (!b) return '';
+  if (!/%\\s*used/i.test(b.innerText || '')) {
+    const hit = Array.from(document.querySelectorAll('button,a,li,[role="button"],[role="tab"],[role="menuitem"]'))
+      .find((e) => e.innerText && e.innerText.trim() === 'Usage' && e.offsetParent);
+    if (hit) hit.click();
+  }
+  // ส่งสองมุมมองมาให้ตัวแกะลองทีละก้อน (ห้ามต่อกันดื้อ ๆ — parseUsagePage บวกผลรวม
+  // ของรายการย่อย ถ้าข้อความซ้ำสองรอบจะได้ค่าเป็นสองเท่า)
+  // innerText ให้บรรทัดที่อ่านง่าย ส่วน textContent เก็บข้อความที่ innerText ข้าม
+  return (b.innerText || '').slice(0, 15000) + '\\n@@SPLIT@@\\n' + (b.textContent || '').slice(0, 15000);
+})()`;
+
+/** เปิดหน้าเว็บในหน้าต่างที่ซ่อนไว้ อ่านค่า แล้วปิดทิ้งเสมอ — คืน null ถ้าอ่านไม่ได้ */
+function readDom(id) {
+  const url = PROVIDERS[id].domUsage;
+  return new Promise((resolve) => {
+    let win = null;
+    let timer = null;
+    let killer = null;
+    let done = false;
+    let lastText = ''; // ข้อความล่าสุดที่อ่านได้ — ใช้เป็นหลักฐานตอนแกะไม่ออก
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      clearTimeout(killer);
+      // อ่านไม่ได้เกิดได้หลายสาเหตุที่แยกจากกันไม่ออกจากภายนอก (หน้าเปลี่ยนหน้าตา,
+      // ติด Cloudflare, SPA ยัง render ไม่เสร็จ, session หลุด) — ทิ้งข้อความที่เห็น
+      // ไว้ในเครื่องให้ไล่ดูได้ ไม่งั้นเหลือแค่ "ใช้ไม่ได้" ซึ่งบอกอะไรไม่ได้เลย
+      if (!val) {
+        try {
+          fs.writeFileSync(
+            path.join(app.getPath('userData'), `debug-dom-${id}.txt`),
+            `url: ${url}\nอ่านได้ ${lastText.length} ตัวอักษร\n--- ข้อความบนหน้า ---\n${lastText.slice(0, 8000)}`,
+            'utf8'
+          );
+        } catch { /* เขียน debug ไม่ได้ ไม่เป็นไร */ }
+      }
+      // ต้องปิดให้ได้ทุกทาง ไม่งั้นหน้าต่างซ่อนค้างสะสมทุกรอบรีเฟรชจนกินหน่วยความจำ
+      try {
+        if (win && !win.isDestroyed()) win.destroy();
+      } catch { /* ปิดไปแล้ว */ }
+      resolve(val);
+    };
+    try {
+      getSes(id); // ให้ UA ถูกตั้งก่อนหน้าต่างโหลด (Cloudflare ผูก cookie กับ UA)
+      win = new BrowserWindow({
+        show: false,
+        width: 1280,
+        height: 900,
+        webPreferences: {
+          partition: PROVIDERS[id].partition,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true
+        }
+      });
+      win.loadURL(url);
+    } catch {
+      return finish(null);
+    }
+    killer = setTimeout(() => finish(null), DOM_TIMEOUT_MS);
+    timer = setInterval(async () => {
+      try {
+        if (!win || win.isDestroyed()) return finish(null);
+        const text = await win.webContents.executeJavaScript(DOM_READ_JS, true);
+        if (typeof text === 'string' && text) lastText = text;
+        const parsed = parseUsagePage(text);
+        if (parsed) finish(parsed);
+      } catch { /* หน้ายังโหลดไม่เสร็จ — รอบหน้าลองใหม่ */ }
+    }, DOM_POLL_MS);
+  });
+}
+
+/** ค่าจากหน้าเว็บพร้อมแคช — คืน { pct, reset } หรือ null */
+async function fetchDomUsage(id) {
+  if (!PROVIDERS[id].domUsage) return null;
+  const s = st(id);
+  const now = Date.now();
+  if (s.dom.data && now - s.dom.at < DOM_CACHE_MS) return s.dom.data;
+  // เปิดหน้าต่างพร้อมกันหลายบานคือหายนะ — รอบที่มาทีหลังเกาะรอบที่กำลังทำอยู่
+  if (s.dom.inflight) return s.dom.inflight;
+  s.dom.inflight = readDom(id)
+    .then((data) => {
+      if (data) s.dom = { ...s.dom, at: Date.now(), data };
+      return data;
+    })
+    .finally(() => {
+      s.dom.inflight = null;
+    });
+  return s.dom.inflight;
+}
+
 /** คืน { session, weekly } — โยน error พร้อมข้อความไทยเมื่อใช้ไม่ได้ */
 async function fetchLive(id) {
   const s = st(id);
@@ -301,7 +486,7 @@ async function fetchLive(id) {
     }
     // endpoint ที่เรียนรู้จากหน้า usage มาก่อน (ตรงกับที่ผู้ใช้เห็นบนเว็บที่สุด) แล้วค่อย fallback
     const tries = [...(s.discovered ? [s.discovered] : []), ...PROVIDERS[id].fallbackTries];
-    if (!tries.length) {
+    if (!tries.length && !PROVIDERS[id].domUsage) {
       throw new Error(`ยังไม่รู้จัก endpoint ของ ${host} — เปิดหน้าต่างล็อกอินแล้วเข้าหน้า usage หนึ่งครั้ง`);
     }
     const out = { session: null, weekly: null };
@@ -333,6 +518,15 @@ async function fetchLive(id) {
       for (const k of ['session', 'weekly']) {
         if (parsed[k] && (!out[k] || parsed[k].pct > out[k].pct)) out[k] = parsed[k];
       }
+    }
+    // endpoint ให้ได้แค่โควตารอบสั้น (Grok: แชท 2 ชม.) — ตัวที่บีบจริงคือรายสัปดาห์
+    // ซึ่งอ่านได้จากหน้าเว็บทางเดียว ต้องลองเสมอแม้ข้างบนจะสำเร็จไปแล้วบางส่วน
+    if (!out.weekly && PROVIDERS[id].domUsage) {
+      const dom = await fetchDomUsage(id);
+      if (debugSink) {
+        debugSink.push(`--- อ่านจากหน้าเว็บ ${PROVIDERS[id].domUsage}\n${dom ? JSON.stringify(dom) : 'อ่านไม่ได้'}`);
+      }
+      if (dom?.weekly) out.weekly = dom.weekly;
     }
     if (!out.session && !out.weekly) {
       if (denied) throw new Error(`${host} ไม่รับ session — เปิดหน้าต่างล็อกอินอีกครั้ง`);

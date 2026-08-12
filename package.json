@@ -1,6 +1,6 @@
 {
   "name": "tokengauge",
-  "version": "1.2.4",
+  "version": "1.2.14",
   "description": "TokenGauge — มาตรวัดโควตา AI สำหรับ Claude / ChatGPT / Grok บน Windows",
   "main": "main.js",
   "author": "KruJo — The AI Teacher",
