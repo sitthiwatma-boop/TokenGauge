@@ -1,7 +1,7 @@
 'use strict';
 /**
  * webquota.js — % โควตาสดจากเว็บของผู้ให้บริการ ผ่าน session ที่ผู้ใช้ล็อกอิน
- * "ในหน้าต่างของแอปเอง" (opt-in ทดลอง, ปิดเป็นค่าเริ่มต้น) — Claude และ ChatGPT
+ * "ในหน้าต่างของแอปเอง" (opt-in ทดลอง, ปิดเป็นค่าเริ่มต้น) — Claude, ChatGPT และ Gemini
  *
  * วิธีทำงานต่อผู้ให้บริการหนึ่งราย:
  *   1) ผู้ใช้ล็อกอินเว็บในหน้าต่างของแอปหนึ่งครั้ง — cookie อยู่ใน partition ส่วนตัวของแอป
@@ -17,7 +17,7 @@
 const { app, BrowserWindow, session } = require('electron');
 const fs = require('fs');
 const path = require('path');
-const { parseWebText } = require('./liveusage');
+const { parseWebText, parseGeminiUsagePage } = require('./liveusage');
 
 // ใช้ UA ของ Firefox กับทุก session — Google ปฏิเสธหน้าล็อกอินใน embedded browser
 // และจับได้ถ้า header กับ navigator.userAgent ไม่ตรงกัน จึงต้องเป็น Firefox ทุกจุด
@@ -51,6 +51,22 @@ const PROVIDERS = {
     // backend-api ของ ChatGPT ไม่รับ cookie อย่างเดียว ต้องมี Bearer token ที่หน้าเว็บ
     // ขอจาก endpoint นี้ด้วย cookie — แอปทำแบบเดียวกัน (token อยู่ในหน่วยความจำเท่านั้น)
     bearerFrom: 'https://chatgpt.com/api/auth/session'
+  },
+  // gemini.google.com — หน้า usage ใช้ batchexecute ที่ผูก token ต่อหน้า replay ไม่ได้
+  // จึงอ่าน "ข้อความบนหน้า" จากหน้าต่างซ่อนทางเดียว (ผู้ใช้อนุมัติ 25 พ.ย. 2026 ดู CLAUDE.md)
+  // hl=th ตายตัว — ตัวแปลงยืนยันกับหน้าภาษาไทยของจริงแล้ว ส่วนภาษาอังกฤษยังเป็นการเดา
+  gemini: {
+    partition: 'persist:geminiweb',
+    home: 'https://gemini.google.com/usage?hl=th',
+    origin: 'https://gemini.google.com',
+    urlRe: /^https:\/\/gemini\.google\.com\//,
+    cookieDomains: [/(^|\.)google\.com$/],
+    // cookie ล็อกอินของ Google ชื่อ SID / __Secure-1PSID — ไม่เข้าแพทเทิร์นกลางของ hasSession
+    sessionCookie: /^(SID|__Secure-[13]PSID)$/,
+    learn: false, // ไม่ต้องเรียนรู้ endpoint — คำตอบของ Google อาจถูกแกะผิดเป็น % มั่ว ๆ
+    fallbackTries: [],
+    domUsage: 'https://gemini.google.com/usage?hl=th',
+    domParse: parseGeminiUsagePage
   }
 };
 
@@ -68,6 +84,7 @@ function st(id) {
       lastGood: { at: 0, data: null },
       backoffUntil: 0,
       sniffLog: null, // บันทึก network ของหน้าต่างล็อกอินรอบล่าสุด (เขียนลงไฟล์ตอนปิดหน้าต่าง)
+      dom: { at: 0, data: null, inflight: null }, // ค่าที่อ่านจากหน้าเว็บ (แคชนานกว่าปกติ)
       bearer: { at: 0, token: null } // token ชั่วคราวในหน่วยความจำ — ห้ามเขียนลงดิสก์
     };
   }
@@ -243,7 +260,7 @@ function openLogin(id, parent) {
     });
     s.loginWin.loadURL(PROVIDERS[id].home);
     try {
-      attachSniffer(id, s.loginWin.webContents); // เรียนรู้ endpoint หน้า usage ถ้าผู้ใช้เปิดดู
+      if (PROVIDERS[id].learn !== false) attachSniffer(id, s.loginWin.webContents); // เรียนรู้ endpoint หน้า usage ถ้าผู้ใช้เปิดดู
     } catch (err) {
       // debugger attach ไม่ได้ = ไม่มีทางเรียนรู้ endpoint เลย ฟีเจอร์หลักยังทำงานด้วย
       // fallback ก็จริง แต่ห้ามเงียบ ไม่งั้นไล่บั๊กตาบอด (เคยนั่งหาว่าทำไมไม่เรียนรู้สักที)
@@ -266,7 +283,7 @@ async function hasSession(id) {
     return cookies.some(
       (c) =>
         PROVIDERS[id].cookieDomains.some((re) => re.test(c.domain || '')) &&
-        /sso|session|auth|token/i.test(c.name)
+        (PROVIDERS[id].sessionCookie || /sso|session|auth|token/i).test(c.name)
     );
   } catch {
     return false;
@@ -279,6 +296,7 @@ async function logout(id) {
   await getSes(id).clearStorageData();
   s.cache = { at: 0, data: null, error: null };
   s.lastGood = { at: 0, data: null };
+  s.dom = { at: 0, data: null, inflight: null };
   s.backoffUntil = 0;
 }
 
@@ -332,6 +350,100 @@ async function requestOnce(id, d) {
     });
 }
 
+/* ---------- อ่านตัวเลขจากหน้าเว็บโดยตรง (เจ้าที่ endpoint replay ไม่ได้) ----------
+ * เปิดหน้า usage ในหน้าต่างที่ซ่อนไว้ (session เดียวกับที่ผู้ใช้ล็อกอินในแอป) แล้วอ่าน
+ * "ข้อความที่ผู้ใช้เห็นบนจอ" ตรง ๆ — ได้ค่าเดียวกับหน้าเว็บ ไม่ต้องเดาโครงข้อมูล
+ * ข้อแลกเปลี่ยน: หนักกว่า fetch มาก จึงแคช 10 นาทีและกันเปิดซ้อนไว้
+ * ตัวแปลงข้อความอยู่ใน liveusage.js (PROVIDERS[id].domParse) เทสต์ได้ด้วย node เปล่า
+ */
+const DOM_CACHE_MS = 10 * 60 * 1000;
+const DOM_TIMEOUT_MS = 40 * 1000; // SPA ของ Google ใช้เวลาหลายวินาทีกว่าจะ render ตัวเลข
+const DOM_POLL_MS = 1500;
+
+// รันในหน้าเว็บของเจ้าของ session เอง — อ่านข้อความที่แสดงอยู่เท่านั้น
+// ห้ามแตะ cookie/localStorage ห้ามคลิก/กรอก และห้ามส่งอะไรออกจากหน้านั้นเด็ดขาด
+const DOM_READ_JS = `(() => (document.body ? document.body.innerText || '' : '').slice(0, 20000))()`;
+
+/** เปิดหน้าเว็บในหน้าต่างที่ซ่อนไว้ อ่านค่า แล้วปิดทิ้งเสมอ — คืน null ถ้าอ่านไม่ได้ */
+function readDom(id) {
+  const { domUsage: url, domParse } = PROVIDERS[id];
+  return new Promise((resolve) => {
+    let win = null;
+    let timer = null;
+    let killer = null;
+    let done = false;
+    let lastText = ''; // ข้อความล่าสุดที่อ่านได้ — ใช้เป็นหลักฐานตอนแกะไม่ออก
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+      clearInterval(timer);
+      clearTimeout(killer);
+      // อ่านไม่ได้เกิดได้หลายสาเหตุที่แยกจากภายนอกไม่ออก (หน้าเปลี่ยนหน้าตา, session หลุด
+      // ไปหน้าล็อกอิน, SPA ยัง render ไม่เสร็จ) — ทิ้งข้อความที่เห็นไว้ในเครื่องให้ไล่ดูได้
+      if (!val) {
+        try {
+          fs.writeFileSync(
+            path.join(app.getPath('userData'), `debug-dom-${id}.txt`),
+            `url: ${url}\nอ่านได้ ${lastText.length} ตัวอักษร\n--- ข้อความบนหน้า ---\n${maskSecrets(lastText).slice(0, 8000)}`,
+            'utf8'
+          );
+        } catch { /* เขียน debug ไม่ได้ ไม่เป็นไร */ }
+      }
+      // ต้องปิดให้ได้ทุกทาง ไม่งั้นหน้าต่างซ่อนค้างสะสมทุกรอบรีเฟรชจนกินหน่วยความจำ
+      try {
+        if (win && !win.isDestroyed()) win.destroy();
+      } catch { /* ปิดไปแล้ว */ }
+      resolve(val);
+    };
+    try {
+      getSes(id); // ให้ UA ถูกตั้งก่อนหน้าต่างโหลด
+      win = new BrowserWindow({
+        show: false,
+        width: 1280,
+        height: 900,
+        webPreferences: {
+          partition: PROVIDERS[id].partition,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true
+        }
+      });
+      win.loadURL(url);
+    } catch {
+      return finish(null);
+    }
+    killer = setTimeout(() => finish(null), DOM_TIMEOUT_MS);
+    timer = setInterval(async () => {
+      try {
+        if (!win || win.isDestroyed()) return finish(null);
+        const text = await win.webContents.executeJavaScript(DOM_READ_JS, true);
+        if (typeof text === 'string' && text) lastText = text;
+        const parsed = domParse(text);
+        if (parsed) finish(parsed);
+      } catch { /* หน้ายังโหลดไม่เสร็จ — รอบหน้าลองใหม่ */ }
+    }, DOM_POLL_MS);
+  });
+}
+
+/** ค่าจากหน้าเว็บพร้อมแคช — คืน { session, weekly } หรือ null */
+async function fetchDomUsage(id) {
+  if (!PROVIDERS[id].domUsage) return null;
+  const s = st(id);
+  const now = Date.now();
+  if (s.dom.data && now - s.dom.at < DOM_CACHE_MS) return s.dom.data;
+  // เปิดหน้าต่างพร้อมกันหลายบานคือหายนะ — รอบที่มาทีหลังเกาะรอบที่กำลังทำอยู่
+  if (s.dom.inflight) return s.dom.inflight;
+  s.dom.inflight = readDom(id)
+    .then((data) => {
+      if (data) s.dom = { ...s.dom, at: Date.now(), data };
+      return data;
+    })
+    .finally(() => {
+      s.dom.inflight = null;
+    });
+  return s.dom.inflight;
+}
+
 /** คืน { session, weekly } — โยน error พร้อมข้อความไทยเมื่อใช้ไม่ได้ */
 async function fetchLive(id) {
   const s = st(id);
@@ -351,7 +463,7 @@ async function fetchLive(id) {
     }
     // endpoint ที่เรียนรู้จากหน้า usage มาก่อน (ตรงกับที่ผู้ใช้เห็นบนเว็บที่สุด) แล้วค่อย fallback
     const tries = [...(s.discovered ? [s.discovered] : []), ...PROVIDERS[id].fallbackTries];
-    if (!tries.length) {
+    if (!tries.length && !PROVIDERS[id].domUsage) {
       throw new Error(`ยังไม่รู้จัก endpoint ของ ${host} — เปิดหน้าต่างล็อกอินแล้วเข้าหน้า usage หนึ่งครั้ง`);
     }
     const out = { session: null, weekly: null };
@@ -382,6 +494,17 @@ async function fetchLive(id) {
       if (!parsed) continue;
       for (const k of ['session', 'weekly']) {
         if (parsed[k] && (!out[k] || parsed[k].pct > out[k].pct)) out[k] = parsed[k];
+      }
+    }
+    // เจ้าที่ endpoint อ่านไม่ได้ (Gemini) — อ่านจากหน้าเว็บที่ผู้ใช้เห็นเอง
+    if (!out.session && !out.weekly && PROVIDERS[id].domUsage) {
+      const dom = await fetchDomUsage(id);
+      if (debugSink) {
+        debugSink.push(`--- อ่านจากหน้าเว็บ ${PROVIDERS[id].domUsage}\n${dom ? JSON.stringify(dom) : 'อ่านไม่ได้'}`);
+      }
+      if (dom) {
+        out.session = dom.session;
+        out.weekly = dom.weekly;
       }
     }
     if (!out.session && !out.weekly) {

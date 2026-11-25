@@ -121,14 +121,14 @@ function cardHtml(p) {
   // main คิด headline มาให้แล้ว (ดู pushUsage) ใช้ของเขาเป็นหลักเพื่อให้ tray/แจ้งเตือน
   // พูดตรงกับหน้าปัดเสมอ — คำนวณเองเป็นทางสำรองสำหรับ demo mock ที่ไม่มีฟิลด์นี้
   const pct = p.headline ? p.headline.pct : webGauge ? p.weekly.pct : p.session.pct;
-  const gaugeLabel = webGauge ? 'รายสัปดาห์ · จากเว็บ' : 'บล็อก 5 ชั่วโมง';
+  const gaugeLabel = webGauge ? 'รายสัปดาห์ · จากเว็บ' : p.webOnly ? 'รอบปัจจุบัน · จากเว็บ' : 'บล็อก 5 ชั่วโมง';
   const off = ARC_LEN * (1 - Math.min(1, pct / 100));
   const spark = p.spark || [];
   const peak = Math.max(1, ...spark);
   const bars = spark
     .map((v, i) => `<i class="${i === spark.length - 1 ? 'now' : ''}" style="height:${Math.max(2, (v / peak) * 26)}px"></i>`)
     .join('');
-  const eta = webGauge
+  const eta = webGauge || p.webOnly
     ? 'ตามหน้าเว็บผู้ให้บริการ'
     // ต้องเป็น liveSource ของ session เอง — p.live ติดธงแม้ API ให้มาแต่รายสัปดาห์
     // ซึ่งกรณีนั้น session.pct เป็นค่าประมาณ จะประกาศ "โควตาเต็ม" ไม่ได้
@@ -147,7 +147,7 @@ function cardHtml(p) {
       <div class="mascot m-${p.id} ${mood}">${mascotSvg(p.id, mood)}</div>
       <div><div class="n">${p.name}</div><div class="s">${p.subtitle || ''}</div></div>
       ${sourceBadge(p)}
-      <button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'เปลี่ยนแพลนได้ในหน้าตั้งค่า'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>
+      ${p.webOnly ? '' : `<button class="pill" data-act="plan" title="${p.calibrated ? 'ลิมิตมาจากการปรับเทียบกับ % จริง' : 'เปลี่ยนแพลนได้ในหน้าตั้งค่า'}">${p.planLabel}${p.calibrated ? ' ✓' : ''}</button>`}
     </div>
 
     <div class="minigauge">
@@ -176,7 +176,7 @@ function cardHtml(p) {
 
     <div class="rows">
       <div class="row">
-        <div class="l"><span>บล็อกปัจจุบัน</span><em>${amountLabel(p, 'session')}</em></div>
+        <div class="l"><span>${p.webOnly ? 'รอบปัจจุบัน' : 'บล็อกปัจจุบัน'}</span><em>${amountLabel(p, 'session')}</em></div>
         <!-- ต้องเป็น session.pct ไม่ใช่ pct ของหน้าปัด — การ์ดที่หน้าปัดโชว์รายสัปดาห์
              จะทำให้แถบนี้ถมตามรายสัปดาห์ ขัดกับตัวเลขในแถวเดียวกันเอง -->
         <div class="bar ${level(p.session.pct)}"><i style="width:${Math.min(100, p.session.pct)}%"></i></div>
@@ -191,7 +191,7 @@ function cardHtml(p) {
       </div>` : ''}
     </div>
 
-    <div class="spark">${bars}</div>
+    ${p.webOnly ? '' : `<div class="spark">${bars}</div>`}
 
     <div class="foot">
       <span class="k">รีเซ็ตอีก</span>
@@ -354,7 +354,7 @@ document.querySelectorAll('.seg-b').forEach((b) => {
 
 /* ---------- หน้าตั้งค่า ---------- */
 // การ์ดที่มีโหมดโควตาสดจากเว็บ (ล็อกอินในหน้าต่างแอป — ดู src/webquota.js)
-const WEB_HOST = { claude: 'claude.ai', chatgpt: 'chatgpt.com' };
+const WEB_HOST = { claude: 'claude.ai', chatgpt: 'chatgpt.com', gemini: 'gemini.google.com' };
 const PLANS = [
   ['auto', 'อัตโนมัติ (P90)'],
   ['pro', 'Pro'],
@@ -445,7 +445,7 @@ function renderSettings() {
       (p) => `
     <div class="pgroup" data-id="${p.id}">
       <h3><b style="background:${p.accent}"></b>${p.name} <span style="color:var(--dim);font-weight:400">${p.subtitle}</span></h3>
-      <div class="field">
+      ${p.webOnly ? '' : `<div class="field">
         <label>แพลน / วิธีคิดลิมิต</label>
         <select data-f="plan">${PLANS.map((x) => `<option value="${x[0]}" ${p.plan === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select>
       </div>
@@ -465,7 +465,7 @@ function renderSettings() {
           <button class="btn" data-act="calibrate">ปรับเทียบ</button>
         </div>`}
         <p class="cal-note" data-role="cal-note">${calNoteHtml(p)}</p>
-      </div>
+      </div>`}
       ${p.id === 'claude' ? `
       <div class="field" style="margin-bottom:8px">
         <label class="toggle"><input type="checkbox" data-f="live" ${p.liveUsage ? 'checked' : ''}><i class="sw"></i>ดึง % ทางการจาก claude.ai (เรียลไทม์)</label>
@@ -485,18 +485,18 @@ function renderSettings() {
           p.id === 'claude'
             ? 'ทางสำรองของโหมดเรียลไทม์ข้างบน — แอปจะถาม API ทางการก่อนเสมอ แล้วมาทางนี้เมื่อ token ของ Claude Code หมดอายุ (เกิดขึ้นเมื่อไม่ได้ใช้ CLI หลายชั่วโมง) '
             : ''
-        }ล็อกอิน ${WEB_HOST[p.id]} ในหน้าต่างของแอปหนึ่งครั้ง ด้วยบัญชีเดียวกับที่ใช้บนเว็บ
+        }${
+          p.webOnly
+            ? `ล็อกอิน Google ในหน้าต่างของแอปหนึ่งครั้ง ด้วยบัญชีเดียวกับที่ใช้ Gemini บนเว็บ
+        แล้วแอปจะเปิดหน้า "ขีดจำกัดการใช้งาน" ในหน้าต่างที่ซ่อนไว้ทุก 10 นาที อ่านเฉพาะ % บนหน้า
+        — session อยู่ในแอปเท่านั้น ไม่แตะเบราว์เซอร์หรือ cookie อื่นใด`
+            : `ล็อกอิน ${WEB_HOST[p.id]} ในหน้าต่างของแอปหนึ่งครั้ง ด้วยบัญชีเดียวกับที่ใช้บนเว็บ
         แล้วเปิดหน้า usage ในหน้าต่างนั้นให้แอปเรียนรู้ — session อยู่ในแอปเท่านั้น
-        ไม่แตะเบราว์เซอร์หรือ cookie อื่นใด ถ้าใช้ไม่ได้แอปจะถอยไปค่าปักหมุด/ประมาณเอง</span>
+        ไม่แตะเบราว์เซอร์หรือ cookie อื่นใด ถ้าใช้ไม่ได้แอปจะถอยไปค่าปักหมุด/ประมาณเอง`
+        }</span>
         <button class="btn" data-act="web-login">ล็อกอิน ${WEB_HOST[p.id]}</button>
         <button class="btn" data-act="web-test">ทดสอบ</button>
         <button class="btn cal-clear" data-act="web-logout">ออกจากระบบ</button></p>
-      </div>` : ''}
-      ${p.id === 'gemini' ? `
-      <div class="field" style="margin-bottom:8px">
-        <p class="cal-note">อ่านจากประวัติแชตของ Gemini CLI ในเครื่องล้วน ไม่ต่อเน็ต —
-        Google ไม่ได้บอก % โควตาไว้ในไฟล์ ตัวเลขบนการ์ดจึงเป็นค่าประมาณเทียบกับการใช้ของคุณเอง
-        (แพลน "อัตโนมัติ") ถ้ารู้ % จริง ปรับเทียบด้านบนได้</p>
       </div>` : ''}
       ${p.id === 'chatgpt' ? `
       <div class="field">

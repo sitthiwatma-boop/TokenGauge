@@ -4,7 +4,6 @@
  *
  * หลักการ: ไม่แตะไฟล์ credential / token / รหัสผ่านใด ๆ ทั้งสิ้น
  * อ่านเฉพาะไฟล์ .jsonl ที่บันทึกจำนวน token ของแต่ละ session เท่านั้น
- * (ยกเว้น Gemini CLI ที่เก็บเป็น session-*.json — จำกัดด้วยชื่อไฟล์ ดู filePattern)
  */
 const fs = require('fs');
 const path = require('path');
@@ -90,80 +89,9 @@ function findDedupeKey(node) {
   return null;
 }
 
-/* ---------- Gemini CLI ----------
- * ไฟล์ ~/.gemini/tmp/<hash>/chats/session-*.json — รุ่นเก่าเป็น JSON ก้อนเดียว
- * { sessionId, startTime, messages: [...] } และถูกเขียนทับทั้งไฟล์ทุกเทิร์น
- * รุ่นใหม่อาจเป็น JSONL (บรรทัดละ record) จึงลองแบบก้อนเดียวก่อนแล้วค่อยไล่ทีละบรรทัด
- *
- * ข้อความ type 'gemini' มี tokens = { input, output, cached, thoughts, tool, total }
- * กับดัก: `cached` เป็นส่วนหนึ่งของ `input` อยู่แล้ว (แบบเดียวกับ promptTokenCount ของ
- * Gemini API) ต้องหักออกก่อน ไม่งั้นแคชถูกนับสองรอบ และน้ำหนัก 0.1 ของแคชไม่มีผลเลย
- * ส่วน thoughts คิดราคาเท่า output จึงรวมเข้า output
- */
-function geminiEvent(m, sessionId, fallbackTs) {
-  const t = m?.tokens;
-  if (!t || typeof t !== 'object') return null;
-  if (m.type && m.type !== 'gemini') return null;
-  const cached = NUM(t.cached);
-  const ev = {
-    ts: (typeof m.timestamp === 'string' && Date.parse(m.timestamp)) || fallbackTs,
-    input: Math.max(0, NUM(t.input) - cached) + NUM(t.tool),
-    output: NUM(t.output) + NUM(t.thoughts),
-    cacheCreate: 0,
-    cacheRead: cached
-  };
-  if (ev.input + ev.output + ev.cacheRead <= 0) return null;
-  // key ข้ามไฟล์ — /compress เขียนไฟล์ใหม่ที่ใช้ sessionId เดิม ข้อความเดียวกันต้องไม่นับซ้ำ
-  if (m.id) ev.dk = `${sessionId || ''}:${m.id}`;
-  return ev;
-}
-
-/** แปลงข้อความทั้งไฟล์เป็น events (ฟังก์ชันล้วน เทสต์ได้) */
-function parseGeminiText(text, fallbackTs = Date.now()) {
-  let sessionId = null;
-  const msgs = [];
-  const take = (o) => {
-    if (!o || typeof o !== 'object') return;
-    if (typeof o.sessionId === 'string') sessionId = o.sessionId;
-    if (Array.isArray(o.messages)) msgs.push(...o.messages);
-    const m = o.message && typeof o.message === 'object' ? o.message : o;
-    if (m.tokens) msgs.push(m);
-  };
-  let whole = null;
-  try {
-    whole = JSON.parse(text);
-  } catch { /* ไม่ใช่ JSON ก้อนเดียว — ลองแบบ JSONL */ }
-  if (whole && typeof whole === 'object' && !Array.isArray(whole)) {
-    take(whole);
-  } else {
-    for (const line of String(text).split('\n')) {
-      const s = line.trim();
-      if (!s || s[0] !== '{') continue;
-      try {
-        take(JSON.parse(s));
-      } catch { /* บรรทัดแตก (กำลังเขียนอยู่) ข้าม */ }
-    }
-  }
-  // JSONL อาจเขียนข้อความเดิมซ้ำตอนอัปเดต — ยึดรุ่นล่าสุดของแต่ละ id
-  const byId = new Map();
-  const loose = [];
-  for (const m of msgs) {
-    const ev = geminiEvent(m, sessionId, fallbackTs);
-    if (!ev) continue;
-    if (ev.dk) byId.set(ev.dk, ev);
-    else loose.push(ev);
-  }
-  return [...byId.values(), ...loose].sort((a, b) => a.ts - b.ts);
-}
-
 /* ---------- เดินหาไฟล์ log ---------- */
 
-/** ชื่อไฟล์ที่อ่านได้ — Gemini เก็บเป็น .json จึงต้องจำกัดด้วยชื่อ ไม่งั้นจะไปหยิบไฟล์อื่นใน tmp */
-function filePattern(provider) {
-  return provider?.aggregation === 'gemini' ? /^session-.*\.jsonl?$/i : /\.jsonl$/i;
-}
-
-function walkJsonl(root, out = [], depth = 0, re = /\.jsonl$/i) {
+function walkJsonl(root, out = [], depth = 0) {
   if (depth > 8) return out;
   let entries;
   try {
@@ -173,8 +101,8 @@ function walkJsonl(root, out = [], depth = 0, re = /\.jsonl$/i) {
   }
   for (const e of entries) {
     const full = path.join(root, e.name);
-    if (e.isDirectory()) walkJsonl(full, out, depth + 1, re);
-    else if (e.isFile() && re.test(e.name)) out.push(full);
+    if (e.isDirectory()) walkJsonl(full, out, depth + 1);
+    else if (e.isFile() && /\.jsonl$/i.test(e.name)) out.push(full);
   }
   return out;
 }
@@ -183,7 +111,7 @@ function walkJsonl(root, out = [], depth = 0, re = /\.jsonl$/i) {
 
 /**
  * key = `${aggregation}|${path}` → สถานะการอ่านไฟล์นั้น
- * { mtimeMs, size, offset, carry, skipping, seen, best, events, gemini? }
+ * { mtimeMs, size, offset, carry, skipping, seen, best, sumEvents, events }
  *
  * ห้ามกลับไปใช้ readFileSync ทั้งไฟล์ — log ของ Codex ไฟล์เดียวโตได้ถึง 1.7 GB
  * (เจอจริง 25 พ.ย. 2026) อ่านทั้งก้อนแล้วหน่วยความจำของ Electron เต็ม แอปตายแบบ native
@@ -197,8 +125,6 @@ const CHUNK = 4 * 1024 * 1024;
 // บรรทัดที่ยาวเกินนี้คือผลลัพธ์ของเครื่องมือ (ไฟล์ทั้งไฟล์, ภาพ base64) ไม่ใช่บรรทัด usage
 // ทิ้งไปเลย ไม่งั้นสตริงก้อนเดียวอาจใหญ่หลายร้อย MB
 const MAX_LINE = 16 * 1024 * 1024;
-// Gemini เก็บทั้ง session เป็น JSON ก้อนเดียว — ใหญ่เกินนี้ถือว่าผิดปกติ ไล่ทีละบรรทัดแทน
-const GEMINI_WHOLE_MAX = 64 * 1024 * 1024;
 
 /** อ่านไฟล์ตั้งแต่ตำแหน่ง from ทีละท่อน ส่งบรรทัดที่ครบแล้วให้ onLine คืน { offset, carry, skipping } */
 function readLines(file, from, carry, skipping, onLine) {
@@ -247,27 +173,6 @@ function parseFile(file, provider) {
   const key = `${provider.aggregation}|${file}`;
   const cached = fileCache.get(key);
   if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return cached.events;
-
-  if (provider.aggregation === 'gemini') {
-    // ไฟล์ของ Gemini ถูกเขียนทับทั้งไฟล์ทุกเทิร์น อ่านต่อจาก offset ไม่ได้ ต้องอ่านใหม่ทั้งไฟล์
-    let text = '';
-    try {
-      if (st.size <= GEMINI_WHOLE_MAX) {
-        text = fs.readFileSync(file, 'utf8');
-      } else {
-        const lines = [];
-        readLines(file, 0, '', false, (l) => {
-          if (l.includes('"tokens"')) lines.push(l);
-        });
-        text = lines.join('\n');
-      }
-    } catch {
-      return [];
-    }
-    const events = parseGeminiText(text, st.mtimeMs);
-    fileCache.set(key, { mtimeMs: st.mtimeMs, size: st.size, events });
-    return events;
-  }
 
   // ไฟล์โตขึ้นจากเดิม = มีบรรทัดใหม่ต่อท้าย → อ่านต่อจากเดิม, เล็กลง = ถูกเขียนใหม่ → เริ่มใหม่
   const resume = cached && cached.offset != null && st.size > cached.offset;
@@ -354,19 +259,9 @@ function collectEvents(provider) {
   if (!roots.length) return { events: [], roots: [], missing: true };
 
   const files = [];
-  const re = filePattern(provider);
-  for (const r of roots) walkJsonl(r, files, 0, re);
+  for (const r of roots) walkJsonl(r, files);
   const events = [];
-  const seen = new Set(); // dk = key ข้ามไฟล์ (ตอนนี้มีแต่ Gemini)
-  for (const f of files) {
-    for (const e of parseFile(f, provider)) {
-      if (e.dk) {
-        if (seen.has(e.dk)) continue;
-        seen.add(e.dk);
-      }
-      events.push(e);
-    }
-  }
+  for (const f of files) events.push(...parseFile(f, provider));
   events.sort((a, b) => a.ts - b.ts);
   return { events, roots, files: files.length, missing: false };
 }
@@ -467,6 +362,27 @@ function computeProvider(provider, presets, opts = {}) {
     files: files || 0
   };
 
+  // การ์ดที่ไม่มี log ในเครื่องเลย (Gemini — ใช้บนเว็บ) มีแต่ % จากเว็บ ส่งโครงว่างไปให้ main
+  // ทับ % ลงไป ถ้าดึงจากเว็บไม่ได้ main เปลี่ยนเป็น 'unconfigured' เอง (ห้ามโชว์ 0% เหมือนของจริง)
+  if (provider.webOnly) {
+    const empty = { tokens: 0, limit: 0, pct: 0, resetAt: null };
+    return {
+      ...base,
+      ok: true,
+      state: 'ok',
+      webOnly: true,
+      planLabel: 'จากเว็บ',
+      windowSource: { session: 'web', weekly: 'web' },
+      session: { ...empty, startedAt: null },
+      weekly: { ...empty },
+      burnPerHour: 0,
+      etaMs: null,
+      spark: new Array(24).fill(0),
+      hourly: {},
+      totalEvents: 0,
+      lastActivity: null
+    };
+  }
   if (missing) return { ...base, state: 'unconfigured', message: 'ยังไม่พบโฟลเดอร์ log — ตั้ง path ได้ในหน้าตั้งค่า' };
   if (!events.length) return { ...base, state: 'empty', message: 'พบโฟลเดอร์แล้ว แต่ยังไม่มีข้อมูลการใช้งาน' };
 
@@ -592,4 +508,4 @@ function exportCsv(config) {
   return rows.map((r) => r.join(',')).join('\n');
 }
 
-module.exports = { computeAll, computeProvider, exportCsv, parseGeminiText, BLOCK_MS, WEEK_MS };
+module.exports = { computeAll, computeProvider, exportCsv, BLOCK_MS, WEEK_MS };

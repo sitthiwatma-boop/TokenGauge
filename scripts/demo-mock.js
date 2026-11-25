@@ -16,16 +16,16 @@ const MOCK={updatedAt:now,providers:[
   session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3,liveSource:'api',limitFromPct:true},
   weekly:{tokens:388000,limit:720000,pct:54,liveSource:'api',limitFromPct:true},
   burnPerHour:28800,etaMs:32*60e3,spark:rnd(14000,2)},
- {id:'gemini',name:'Gemini',subtitle:'Gemini CLI',accent:'#4C8DF6',state:'ok',ok:true,plan:'auto',planLabel:'อัตโนมัติ (P90)',
-  estimating:false,files:6,windowSource:{session:'block',weekly:'rolling'},headline:{window:'session',pct:31,resetAt:now+3.2*3600e3,source:'estimate'},
-  session:{tokens:62000,limit:200000,pct:31,resetAt:now+3.2*3600e3},
-  weekly:{tokens:610000,limit:2400000,pct:25.4},
-  burnPerHour:34000,etaMs:4.1*3600e3,spark:rnd(9000,3)}
+ {id:'gemini',name:'Gemini',subtitle:'gemini.google.com',accent:'#4C8DF6',state:'ok',ok:true,webOnly:true,plan:'auto',planLabel:'จากเว็บ',
+  live:true,webGauge:false,windowSource:{session:'web',weekly:'web'},headline:{window:'session',pct:31,resetAt:now+2.2*3600e3,source:'web'},
+  session:{tokens:0,limit:0,pct:31,resetAt:now+2.2*3600e3,liveSource:'web'},
+  weekly:{tokens:0,limit:0,pct:12,resetAt:now+1.8*24*3600e3,liveSource:'web'},
+  burnPerHour:0,etaMs:null,spark:new Array(24).fill(0)}
 ]};
 const CFG={refreshSeconds:60,alertThreshold:90,showInTaskbar:true,alwaysOnTop:false,startWithWindows:false,weeklyMode:'rolling',
  providers:{claude:{id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',enabled:true,plan:'max5',liveUsage:true,calibration:null,liveLimit:{session:993000,weekly:22500000,at:now},roots:['C:\\Users\\you\\.claude\\projects']},
  chatgpt:{id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',enabled:true,plan:'plus',roots:['C:\\Users\\you\\.codex\\sessions']},
- gemini:{id:'gemini',name:'Gemini',subtitle:'Gemini CLI',accent:'#4C8DF6',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.gemini\\tmp']}}};
+ gemini:{id:'gemini',name:'Gemini',subtitle:'gemini.google.com',accent:'#4C8DF6',enabled:true,webOnly:true,liveWeb:true,plan:'auto',roots:[]}}};
 let _cb=null;
 window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
  setProvider:async(id,p)=>{Object.assign(CFG.providers[id],p);const m=MOCK.providers.find(x=>x.id===id);if(m&&p.plan){m.plan=p.plan;m.planLabel={auto:'อัตโนมัติ (P90)',pro:'Pro',max5:'Max 5x',max20:'Max 20x',plus:'Plus'}[p.plan];_cb&&_cb(MOCK);}if(m&&('calibration' in p)&&!p.calibration){m.calibrated=false;_cb&&_cb(MOCK);}if(m&&('liveUsage' in p)){m.live=!!p.liveUsage;_cb&&_cb(MOCK);}return CFG;},

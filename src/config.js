@@ -11,8 +11,8 @@ const HOME = os.homedir();
  * aggregation:
  *   'sum'            = ทุกบรรทัดคือยอดใช้ครั้งนั้น ๆ ให้บวกสะสม (Claude Code)
  *   'cumulative-max' = ตัวเลขในไฟล์เป็นยอดสะสมของ session ให้เอาค่าสูงสุดต่อไฟล์ (Codex CLI)
- *   'gemini'         = ไฟล์ session ของ Gemini CLI (JSON ก้อนเดียวหรือ JSONL) แต่ละข้อความ
- *                      มียอดของเทิร์นนั้น ให้บวกสะสม (ดู parseGeminiFile ใน usage.js)
+ *
+ * webOnly: true = ไม่มี log ในเครื่อง มีแต่ % จากเว็บ (liveWeb) — ดู computeProvider ใน usage.js
  */
 const DEFAULT_PROVIDERS = {
   claude: {
@@ -55,19 +55,16 @@ const DEFAULT_PROVIDERS = {
   gemini: {
     id: 'gemini',
     name: 'Gemini',
-    subtitle: 'Gemini CLI',
+    subtitle: 'gemini.google.com',
     accent: '#4C8DF6',
     enabled: true,
-    // Gemini CLI เก็บประวัติแชตไว้ที่ ~/.gemini/tmp/<hash ของโปรเจกต์>/chats/session-*.json
-    // (รุ่นใหม่อาจเป็น .jsonl) — อ่านเฉพาะไฟล์ session-* ใต้ tmp เท่านั้น
-    // ห้ามขยาย root ขึ้นไปที่ ~/.gemini เพราะในนั้นมี oauth_creds.json (ผิดกฎข้อ 1)
-    roots: [path.join(HOME, '.gemini', 'tmp')],
-    aggregation: 'gemini',
-    cacheReadWeight: 0.1,
+    // ไม่มี log ในเครื่อง — Gemini CLI เลิกให้บัญชีส่วนตัวล็อกอินแล้ว (พ.ย. 2026) และเว็บ/
+    // Antigravity ไม่ทิ้งจำนวน token ไว้ที่ไหนเลย การ์ดนี้จึงมีแต่ % จากหน้า usage บนเว็บ
+    webOnly: true,
+    roots: [],
     plan: 'auto',
-    calibration: null,
-    liveLimit: null,
-    liveSnapshot: null,
+    liveSnapshot: null, // % สดล่าสุดที่วัดได้ — ใช้เป็นพื้นตอนดึงสดไม่สำเร็จ
+    liveWeb: false, // opt-in: อ่าน % จาก gemini.google.com/usage ผ่าน session ที่ล็อกอินในแอปเอง
     windows: { session: true, weekly: true }
   }
 };
@@ -85,7 +82,7 @@ const DEFAULTS = {
   refreshSeconds: 60,
   // ราคาโดยประมาณ "บาทต่อ 1 ล้าน token (ถ่วงน้ำหนักแคชแล้ว)" — เป็นค่าเดาหยาบ
   // ให้พอเห็นภาพ ไม่ใช่ยอดเรียกเก็บจริง แก้ตัวเลขเองได้ใน config.json
-  pricing: { claude: 150, chatgpt: 100, gemini: 80 },
+  pricing: { claude: 150, chatgpt: 100 }, // Gemini ไม่มี — การ์ดนั้นไม่มี token ให้คิดเงิน
   alertThreshold: 90,
   showInTaskbar: true,
   alwaysOnTop: false,
@@ -128,6 +125,18 @@ function load(app) {
       if (saved.providers?.[id]) {
         delete saved.providers[id];
         retired.push(id);
+      }
+      if (saved.pricing) delete saved.pricing[id];
+    }
+    // การ์ดที่ใช้ข้อมูลจากเว็บอย่างเดียว: โครงของการ์ดเป็นของแอป ไม่ใช่ของผู้ใช้ — ค่าที่บันทึกไว้
+    // จากรุ่นก่อน (Gemini เคยอ่าน log ของ Gemini CLI ใน v1.3.0 ช่วงทดสอบ) ต้องไม่ทับ
+    // ไม่งั้นการ์ดยังขึ้น "Gemini CLI" และคิดค่าใช้จ่ายจาก token ที่ไม่มีอยู่จริง
+    for (const [id, def] of Object.entries(DEFAULT_PROVIDERS)) {
+      const sp = saved.providers?.[id];
+      if (!def.webOnly) continue;
+      if (sp) {
+        for (const k of ['subtitle', 'webOnly', 'roots']) delete sp[k];
+        for (const k of ['aggregation', 'cacheReadWeight', 'calibration', 'liveLimit', 'manual']) delete sp[k];
       }
       if (saved.pricing) delete saved.pricing[id];
     }

@@ -622,82 +622,6 @@ t('cumulative-max อ่านต่อได้: ค่าสะสมสูง
   eq(r.session.tokens, 4000);
 });
 
-/* ---------- Gemini CLI ---------- */
-console.log('\nusage.js (Gemini CLI)');
-
-function geminiMsg(id, ts, tokens) {
-  return { id, type: 'gemini', timestamp: iso(ts), content: 'x', model: 'gemini-2.5-pro', tokens };
-}
-function geminiDir(files) {
-  const dir = path.join(TMP, 'gm' + seq++, 'abc123', 'chats');
-  fs.mkdirSync(dir, { recursive: true });
-  for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text, 'utf8');
-  return path.dirname(path.dirname(dir)); // = ~/.gemini/tmp
-}
-
-t('Gemini: cached อยู่ใน input แล้ว ต้องหักออก ไม่งั้นแคชถูกนับสองรอบ', () => {
-  // ตัวเลขจาก session จริง: total = input + output (cached เป็นส่วนหนึ่งของ input)
-  const ev = usage.parseGeminiText(JSON.stringify({
-    sessionId: 's1',
-    messages: [
-      { id: 'u1', type: 'user', timestamp: iso(NOW - H), content: 'hi' },
-      geminiMsg('g1', NOW - H, { input: 64754, output: 509, cached: 58371, thoughts: 0, tool: 0, total: 65263 })
-    ]
-  }), NOW);
-  eq(ev.length, 1, 'ข้อความของผู้ใช้ไม่มี tokens ต้องไม่ถูกนับ');
-  eq(ev[0].input, 64754 - 58371);
-  eq(ev[0].cacheRead, 58371);
-  eq(ev[0].input + ev[0].output + ev[0].cacheRead, 65263, 'รวมกลับต้องเท่ากับ total');
-});
-
-t('Gemini: thoughts คิดเป็น output', () => {
-  const ev = usage.parseGeminiText(JSON.stringify({
-    sessionId: 's1',
-    messages: [geminiMsg('g1', NOW, { input: 22629, output: 805, cached: 0, thoughts: 3174, tool: 0, total: 26608 })]
-  }), NOW);
-  eq(ev[0].output, 805 + 3174);
-  eq(ev[0].input + ev[0].output, 26608);
-});
-
-t('Gemini: แบบ JSONL ข้อความเดิมถูกเขียนซ้ำ → ยึดรุ่นล่าสุด ไม่นับซ้ำ', () => {
-  const lines = [
-    { sessionId: 's2', startTime: iso(NOW - H) },
-    geminiMsg('g1', NOW - H, { input: 100, output: 1, cached: 0 }),
-    geminiMsg('g1', NOW - H, { input: 100, output: 50, cached: 0 }),
-    geminiMsg('g2', NOW, { input: 10, output: 5, cached: 0 })
-  ].map((l) => JSON.stringify(l));
-  const ev = usage.parseGeminiText(lines.join('\n') + '\n{"broken', NOW);
-  eq(ev.length, 2);
-  eq(ev[0].output, 50);
-});
-
-t('Gemini: computeProvider อ่าน session-*.json ใน tmp และไม่หยิบไฟล์อื่น', () => {
-  const root = geminiDir({
-    'session-2026-08-05T11-00-aaaa.json': JSON.stringify({
-      sessionId: 's3',
-      messages: [geminiMsg('g1', NOW - H, { input: 1000, output: 200, cached: 0 })]
-    }),
-    // /compress เขียนไฟล์ใหม่ด้วย sessionId เดิม — ข้อความเดิมต้องไม่ถูกนับสองรอบ
-    'session-2026-08-05T12-00-aaaa.json': JSON.stringify({
-      sessionId: 's3',
-      messages: [
-        geminiMsg('g1', NOW - H, { input: 1000, output: 200, cached: 0 }),
-        geminiMsg('g2', NOW - 0.5 * H, { input: 300, output: 100, cached: 0 })
-      ]
-    }),
-    'checkpoint-foo.json': JSON.stringify({ messages: [geminiMsg('x', NOW, { input: 999999, output: 0 })] }),
-    'logs.json': JSON.stringify([{ tokens: { input: 999999 } }])
-  });
-  const r = usage.computeProvider(
-    { id: 'gemini', name: 'Gemini', roots: [root], aggregation: 'gemini', cacheReadWeight: 0.1, plan: 'auto' },
-    PLAN_PRESETS, { now: NOW }
-  );
-  eq(r.state, 'ok');
-  eq(r.files, 2);
-  eq(r.totalEvents, 2);
-  eq(r.session.tokens, 1600);
-});
-
 t('config: providers.grok ที่ค้างใน config.json เดิมถูกลบตอนโหลด', () => {
   const dir = path.join(TMP, 'cfg' + seq++);
   fs.mkdirSync(dir, { recursive: true });
@@ -712,6 +636,90 @@ t('config: providers.grok ที่ค้างใน config.json เดิม�
   ok(cfg.providers.gemini, 'ต้องมีการ์ด Gemini มาแทน');
   eq(cfg.retired, ['grok']);
   eq(Object.keys(JSON.parse(JSON.stringify(cfg))).includes('retired'), false, 'retired ห้ามถูกเขียนลงไฟล์');
+});
+
+/* ---------- Gemini — % จากหน้า gemini.google.com/usage ---------- */
+console.log('\nGemini (หน้า usage บนเว็บ)');
+
+// ข้อความจริงจากหน้า usage?hl=th (25 พ.ย. 2026 แพลน Ultra) เรียงตามที่ innerText ให้มา
+const GEMINI_TH = `ขีดจำกัดการใช้งาน
+ULTRA
+ขีดจำกัดของแพ็กเกจจะเป็นตัวกำหนดว่าคุณใช้ Gemini ได้มากน้อยแค่ไหนเมื่อเวลาผ่านไป ดูข้อมูลเพิ่มเติม
+เพิ่งอัปเดตเมื่อครู่นี้
+การใช้งานปัจจุบัน
+ใช้ไปแล้ว 2%
+รีเซ็ตเวลา 16:43
+ขีดจำกัดรายสัปดาห์
+รีเซ็ตในวันที่ 27 พ.ย. เวลา 9:43
+ใช้ไปแล้ว 1%`;
+const LOCAL = (y, mo, d, h, mi) => new Date(y, mo, d, h, mi).getTime();
+const G_NOW = LOCAL(2026, 10, 25, 14, 30);
+
+t('Gemini: หน้าไทยของจริง → รอบปัจจุบัน 2% / รายสัปดาห์ 1% พร้อมเวลารีเซ็ต', () => {
+  const r = liveusage.parseGeminiUsagePage(GEMINI_TH, G_NOW);
+  eq(r.session.pct, 2);
+  eq(r.session.resetAt, LOCAL(2026, 10, 25, 16, 43));
+  eq(r.weekly.pct, 1, 'ต้องไม่หยิบ 2% ของรอบปัจจุบันมาใส่รายสัปดาห์');
+  eq(r.weekly.resetAt, LOCAL(2026, 10, 27, 9, 43));
+});
+
+t('Gemini: เวลารีเซ็ตที่ผ่านไปแล้ววันนี้ = พรุ่งนี้', () => {
+  const r = liveusage.parseGeminiUsagePage(GEMINI_TH, LOCAL(2026, 10, 25, 17, 0));
+  eq(r.session.resetAt, LOCAL(2026, 10, 26, 16, 43));
+});
+
+t('Gemini: วันที่ข้ามปี (เห็น 2 ม.ค. ตอนปลายธันวา) → ปีหน้า', () => {
+  const r = liveusage.parseGeminiUsagePage('ขีดจำกัดรายสัปดาห์\nรีเซ็ตในวันที่ 2 ม.ค. เวลา 9:43\nใช้ไปแล้ว 40%', LOCAL(2026, 11, 30, 10, 0));
+  eq(r.weekly.resetAt, LOCAL(2027, 0, 2, 9, 43));
+  eq(r.session, null);
+});
+
+t('Gemini: หน้ายังไม่ render / ไปหน้าล็อกอิน → null ห้ามเดา 0%', () => {
+  eq(liveusage.parseGeminiUsagePage('', G_NOW), null);
+  eq(liveusage.parseGeminiUsagePage('ลงชื่อเข้าใช้\nใช้บัญชี Google ของคุณ', G_NOW), null);
+  eq(liveusage.parseGeminiUsagePage('ขีดจำกัดการใช้งาน\nการใช้งานปัจจุบัน\nขีดจำกัดรายสัปดาห์', G_NOW), null);
+});
+
+t('Gemini: การ์ด webOnly ไม่อ่าน log และส่งโครงเปล่าให้ main ทับ %', () => {
+  const r = usage.computeProvider({ id: 'gemini', name: 'Gemini', webOnly: true, roots: [], plan: 'auto' }, PLAN_PRESETS, { now: NOW });
+  eq(r.state, 'ok');
+  eq(r.webOnly, true);
+  eq(r.session.pct, 0);
+  eq(r.session.liveSource, undefined, 'ต้องไม่ติดธงสด — main จะเปลี่ยนเป็น unconfigured ถ้าไม่ได้ค่าจากเว็บ');
+});
+
+t('applyStale: ค่าค้างจากเว็บของ Gemini → หน้าปัดยึดรอบปัจจุบันเหมือนตอนสด', () => {
+  const p = { id: 'gemini', webOnly: true, session: { pct: 0 }, weekly: { pct: 0 } };
+  liveusage.applyStale(p, {
+    source: 'web',
+    session: { pct: 20, resetAt: NOW + H, at: NOW },
+    weekly: { pct: 5, resetAt: NOW + 2 * 24 * H, at: NOW }
+  });
+  eq(p.webGauge, false);
+  eq(p.session.pct, 20);
+});
+
+t('config: ค่า Gemini เก่าจากช่วงที่อ่าน Gemini CLI ไม่ทับโครงการ์ดเว็บ', () => {
+  const dir = path.join(TMP, 'cfg' + seq++);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({
+    pricing: { claude: 150, chatgpt: 100, gemini: 80 },
+    providers: {
+      gemini: {
+        id: 'gemini', subtitle: 'Gemini CLI', roots: ['C:\\x\\.gemini\\tmp'], aggregation: 'gemini',
+        cacheReadWeight: 0.1, calibration: null, liveLimit: null, enabled: false, liveWeb: true
+      }
+    }
+  }), 'utf8');
+  const cfg = require('../src/config').load({ getPath: () => dir });
+  const g = cfg.providers.gemini;
+  eq(g.webOnly, true);
+  eq(g.roots, []);
+  eq(g.subtitle, 'gemini.google.com');
+  eq(g.aggregation, undefined);
+  eq(cfg.pricing.gemini, undefined, 'ไม่มี token ให้คิดค่าใช้จ่าย');
+  eq(g.enabled, false, 'ค่าที่ผู้ใช้ตั้งเองต้องคงไว้');
+  eq(g.liveWeb, true);
 });
 
 /* ---------- สรุปผล ---------- */

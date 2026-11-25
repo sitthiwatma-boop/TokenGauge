@@ -8,7 +8,7 @@
 ## โปรเจกต์นี้คืออะไร
 
 **TokenGauge** — แอปเดสก์ท็อป Electron บน Windows แสดงโควตาการใช้งาน AI แบบเรียลไทม์
-สำหรับ Claude Code, ChatGPT (Codex CLI) และ Gemini CLI
+สำหรับ Claude Code, ChatGPT (Codex CLI) และ Gemini (หน้า usage บนเว็บ)
 
 ผู้ใช้เป็นครูไทยที่เขียนโค้ดด้วย AI ทั้งวัน ต้องการรู้ในแวบเดียวว่า
 "เหลือโควตาเท่าไหร่ และรีเซ็ตอีกกี่นาที" โดยไม่ต้องเปิดเว็บไปดู
@@ -21,9 +21,6 @@
 
 1. **ห้ามอ่านไฟล์ credential หรือ token ใด ๆ** เช่น `.credentials.json`, `auth.json`,
    Windows Credential Manager — แอปนี้อ่านเฉพาะไฟล์ `.jsonl` ที่บันทึกจำนวน token เท่านั้น
-   (ยกเว้นประวัติแชตของ Gemini CLI `~/.gemini/tmp/**/session-*.json` ซึ่งเป็น log ไม่ใช่
-   credential — root ต้องอยู่ที่ `~/.gemini/tmp` เท่านั้น ห้ามขยายขึ้นไป `~/.gemini`
-   เพราะในนั้นมี `oauth_creds.json`)
    นี่คือจุดขายด้านความปลอดภัยของแอป อย่าเพิ่มฟีเจอร์ที่ทำลายข้อนี้
 2. **ห้ามส่งข้อมูลออกนอกเครื่อง** ไม่มี telemetry ไม่มี analytics ไม่มี cloud sync
    ถ้าจะเพิ่มฟีเจอร์ที่ต้องต่อเน็ต ต้องถามผู้ใช้ก่อนเสมอ
@@ -44,10 +41,15 @@
    > (ทดลอง — endpoint ไม่ทางการ) **ห้ามแตะ cookie ของเบราว์เซอร์ภายนอกเด็ดขาด**
    > แต่ละ credential ส่งหาเซิร์ฟเวอร์ของเจ้าของมันเท่านั้น ห้าม log/เก็บ/ส่งไปที่อื่นเด็ดขาด
    >
-   > **Grok เลิกรองรับแล้ว (25 พ.ย. 2026 ผู้ใช้ขอให้แทนด้วย Gemini)** — ข้อยกเว้นของ Grok
-   > ทั้ง `persist:grokweb` และการอ่านหน้า usage จาก DOM ในหน้าต่างซ่อน (`readDom`)
-   > ถูกถอดออกพร้อมโค้ดแล้ว ห้ามนำกลับมาโดยไม่ถามผู้ใช้ใหม่ การ์ด Gemini อ่านจาก log
-   > ในเครื่องล้วน ไม่ต่อเน็ต และไม่มีข้อยกเว้นใด ๆ
+   > **Gemini อ่านจากหน้าเว็บโดยตรง (ผู้ใช้อนุมัติ 25 พ.ย. 2026)** — opt-in (`liveWeb`)
+   > ผู้ใช้ล็อกอิน Google ในหน้าต่างของแอปเอง (partition `persist:geminiweb`) แล้วแอปเปิด
+   > `gemini.google.com/usage?hl=th` ใน BrowserWindow ที่ซ่อนไว้ อ่าน `document.body.innerText`
+   > อย่างเดียว — ไม่คลิก ไม่กรอก ไม่แตะ cookie/localStorage ไม่ส่งอะไรออกจากหน้านั้น
+   > แคช 10 นาที ปิดหน้าต่างทิ้งทุกครั้ง (`readDom` ใน webquota.js) ไม่เรียนรู้ endpoint
+   > (`learn: false`) และไม่มีการ replay คำขอใด ๆ ของ Google
+   >
+   > **Grok เลิกรองรับแล้ว (25 พ.ย. 2026 ผู้ใช้ขอให้แทนด้วย Gemini)** — `persist:grokweb`
+   > ถูกล้างทิ้งตอนเปิดแอป ห้ามนำกลับมาโดยไม่ถามผู้ใช้ใหม่
    >
    > 2) `autoUpdate` — เช็คเวอร์ชันใหม่จาก GitHub Releases ของโปรเจกต์นี้เอง
    > ทำงานเฉพาะตัวที่แพ็กเป็น .exe แล้ว ปิดได้ด้วย `autoUpdate: false` ใน config
@@ -74,11 +76,17 @@ src/liveusage.js % ทางการ 2 ทาง: Claude ผ่าน API (opt-
                  อ่านเฉพาะท้ายไฟล์เพราะ session log ใหญ่ได้หลายร้อย MB)
                  + ตัวแปลงคำตอบเว็บ parseWebText/parseWebRateLimits (ฟังก์ชันล้วน เทสต์ได้ด้วย node
                  อ่านได้ทั้ง JSON, payload แบบ RSC และ rate_limits แบบ ChatGPT)
+                 + parseGeminiUsagePage — แปลงข้อความหน้า gemini.google.com/usage เป็น
+                 { session, weekly } (ฟังก์ชันล้วน เทสต์ได้)
                  + usableSnapshot/applyStale — ค่าสดล่าสุดที่ยังอ้างอิงได้ตอนดึงสดล้ม
-src/webquota.js  % สดจากเว็บของ Claude/ChatGPT (opt-in) — ล็อกอินในหน้าต่างของแอปเอง
+src/webquota.js  % สดจากเว็บของ Claude/ChatGPT/Gemini (opt-in) — ล็อกอินในหน้าต่างของแอปเอง
                  cookie อยู่ใน partition ของแอปเท่านั้น ไม่แตะเบราว์เซอร์ภายนอก
                  เรียนรู้ endpoint จากหน้า usage ที่ผู้ใช้เปิดในหน้าต่างล็อกอิน แล้ว replay เอง
                  (เก็บใน providers.<id>.liveEndpoint)
+                 + `readDom`/`fetchDomUsage` — เจ้าที่ replay ไม่ได้ (Gemini: `domUsage` +
+                 `domParse`) เปิดหน้า usage ในหน้าต่างซ่อน อ่าน innerText แคช 10 นาที
+                 อ่านไม่ออกจะเขียน debug-dom-<id>.txt (ข้อความบนหน้า) ไว้ให้ไล่ดู
+                 + `sessionCookie` ต่อเจ้า — cookie ล็อกอินของ Google ชื่อ SID/__Secure-1PSID
                  + ตอนเปิดหน้าต่างล็อกอินจะเขียน debug-sniff-<id>.txt ไว้ให้ไล่ดูว่าตัวเรียนรู้
                  เห็นคำขออะไรบ้าง แต่ละอันแกะได้/ไม่ได้ (ค่าที่เหมือน token ถูกปิดบัง)
 src/history.js   เก็บสรุปรายชั่วโมงลง history.json ใน userData 90 วัน
@@ -132,18 +140,20 @@ renderer ไม่เคยอ่านไฟล์เอง และ main ไ�
 **บล็อก 5 ชั่วโมง** — เริ่มนับที่ต้นชั่วโมงของข้อความแรก แล้วยาว 5 ชั่วโมง
 ถ้าเว้นว่างเกิน 5 ชั่วโมงถือว่าขึ้นบล็อกใหม่ (เลียนแบบวิธีของ ccusage)
 
-**aggregation สามแบบ** — ต่างกันตรงนี้เท่านั้น อย่าสับสน
+**aggregation สองแบบ** — ต่างกันตรงนี้เท่านั้น อย่าสับสน
 - `'sum'` = แต่ละบรรทัดคือยอดใช้ครั้งนั้น ให้บวกสะสม (Claude Code)
 - `'cumulative-max'` = ตัวเลขในไฟล์เป็นยอดสะสมของ session ให้เอาค่าสูงสุดต่อไฟล์ (Codex CLI)
   ถ้าบวกสะสมแบบแรกจะได้ตัวเลขพองเกินจริงหลายเท่า
-- `'gemini'` = ไฟล์ `session-*.json` ของ Gemini CLI (`parseGeminiText`) — รุ่นเก่าเป็น JSON
-  ก้อนเดียว `{ sessionId, messages: [...] }` เขียนทับทั้งไฟล์ทุกเทิร์น รุ่นใหม่อาจเป็น JSONL
-  จึงลองก้อนเดียวก่อนแล้วค่อยไล่ทีละบรรทัด นับเฉพาะข้อความ `type: 'gemini'` ที่มี `tokens`
-  **กับดัก: `tokens.cached` เป็นส่วนหนึ่งของ `tokens.input` อยู่แล้ว** ต้องหักออกก่อน
-  (`input - cached` → input, `cached` → cacheRead) ไม่งั้นแคชถูกนับสองรอบ `thoughts` รวมเข้า output
-  กันนับซ้ำข้ามไฟล์ด้วย `dk = sessionId:messageId` เพราะ `/compress` เขียนไฟล์ใหม่ที่ใช้
-  sessionId เดิม — `filePattern()` จำกัดชื่อไฟล์เป็น `session-*` ไม่งั้นจะหยิบ `logs.json`
-  หรือ checkpoint ใน tmp มาด้วย Gemini ไม่บันทึก % โควตาในไฟล์ การ์ดจึงเป็นค่าประมาณเสมอ
+
+**การ์ดเว็บล้วน (`webOnly: true` — Gemini)** — ไม่มี log ในเครื่องเลย (Gemini CLI เลิกให้
+บัญชีส่วนตัวล็อกอินแล้ว พ.ย. 2026 — "This client is no longer supported for Gemini Code Assist
+for individuals" — และเว็บ/Antigravity ไม่ทิ้งจำนวน token ไว้) `computeProvider` ส่งโครงเปล่า
+ให้ main ทับ % จากเว็บ ถ้ายังไม่มีค่าสด/ค่าค้าง main เปลี่ยนการ์ดเป็น `unconfigured` พร้อมบอก
+ให้ไปล็อกอิน **ห้ามโชว์ 0% เหมือนเป็นของจริง** หน้าปัดยึดรอบปัจจุบัน (`webGauge = false`
+เหมือน Claude — เงื่อนไขใน `applyLiveWeb` กับ `applyStale` ต้องตรงกัน) ไม่มีแพลน/ปรับเทียบ/
+ค่าใช้จ่าย/กราฟ และ `config.load` ลบ `subtitle/roots/aggregation/...` ที่บันทึกไว้จากรุ่นทดสอบ
+ที่เคยอ่าน Gemini CLI ทิ้งทุกครั้ง ไม่งั้น deepMerge เอาค่าเก่ามาทับโครงการ์ด
+ตัวแปลงหน้า usage คือ `parseGeminiUsagePage` (ยืนยันกับหน้าไทยของจริงแล้ว อังกฤษยังเดา)
 
 **เลิกรองรับผู้ให้บริการ** — `RETIRED_PROVIDERS` ใน config.js ลบ `providers.<id>` ออกตอนโหลด
 (ไม่งั้น deepMerge เอากลับมาจาก config.json เดิม การ์ดเก่าโผล่อีก) แล้ว `cleanupRetired()`

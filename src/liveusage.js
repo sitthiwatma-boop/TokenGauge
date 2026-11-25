@@ -178,9 +178,9 @@ function applyStale(p, snap) {
   if (snap.session) p.etaMs = null;
   // การ์ดที่เคยยึดรายสัปดาห์จากเว็บต้องยึดต่อ ไม่งั้นหน้าปัดสลับไปโชว์บล็อก 5 ชม.
   // ตอนเว็บล้ม แล้วตัวเลขบนหน้าปัดกระโดดทั้งที่ผู้ใช้ไม่ได้ทำอะไร
-  // เงื่อนไขต้องตรงกับ applyLiveWeb ใน main.js เป๊ะ ๆ (Claude ยึดบล็อก 5 ชม. ถ้ามีค่ารอบสั้น
+  // เงื่อนไขต้องตรงกับ applyLiveWeb ใน main.js เป๊ะ ๆ (Claude/Gemini ยึดรอบสั้นถ้ามีค่ารอบสั้น
   // ส่วน ChatGPT ยึดรายสัปดาห์เสมอ เพราะ session ของฝั่งนั้นคือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
-  if (snap.source === 'web') p.webGauge = p.id === 'claude' && snap.session ? false : !!snap.weekly;
+  if (snap.source === 'web') p.webGauge = (p.id === 'claude' || p.webOnly) && snap.session ? false : !!snap.weekly;
   return p;
 }
 
@@ -535,7 +535,83 @@ function parseWebText(text, now = Date.now()) {
   return found ? out : null;
 }
 
+/* ---------- Gemini (gemini.google.com/usage) — อ่านจาก "ข้อความบนหน้า" ----------
+ * หน้า usage ของ Gemini ไม่มี endpoint JSON ให้ replay (ใช้ batchexecute ที่ผูก token ต่อหน้า)
+ * webquota จึงเปิดหน้านั้นในหน้าต่างซ่อนแล้วส่ง innerText มาให้ตัวนี้แกะ (เทสต์ได้ด้วย node เปล่า)
+ *
+ * หน้าตาจริง (hl=th, 25 พ.ย. 2026 แพลน Ultra):
+ *   การใช้งานปัจจุบัน · ใช้ไปแล้ว 2% · รีเซ็ตเวลา 16:43
+ *   ขีดจำกัดรายสัปดาห์ · รีเซ็ตในวันที่ 27 พ.ย. เวลา 9:43 · ใช้ไปแล้ว 1%
+ * webquota ขอหน้าภาษาไทย (hl=th) เสมอ ส่วนรูปแบบอังกฤษรองรับไว้เผื่อเท่านั้น (ยังไม่เคยเห็นของจริง)
+ */
+const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+const EN_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+function monthIndex(s) {
+  const t = String(s || '').replace(/\s/g, '');
+  const th = TH_MONTHS.indexOf(t.endsWith('.') ? t : t + '.');
+  if (th >= 0) return th;
+  return EN_MONTHS.indexOf(t.slice(0, 3).toLowerCase());
+}
+
+/** เวลารีเซ็ตจากข้อความ — มีแต่เวลา = ครั้งถัดไปของเวลานั้น, มีวันที่ = วันนั้น (ข้ามปีถ้าผ่านไปแล้ว) */
+function geminiResetAt(zone, now) {
+  let m = zone.match(/รีเซ็ต(?:ใน)?\s*(?:วันที่\s*(\d{1,2})\s*([ก-๙]{1,3}\.[ก-๙]{1,2}\.?)\s*)?(?:เวลา\s*)?(\d{1,2})[:.](\d{2})/);
+  let day = null, mon = -1, hh, mm;
+  if (m) {
+    if (m[1]) {
+      day = Number(m[1]);
+      mon = monthIndex(m[2]);
+    }
+    hh = Number(m[3]);
+    mm = Number(m[4]);
+  } else {
+    m = zone.match(/Resets?\s+(?:on\s+|at\s+)?(?:([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:,?\s*\d{4})?,?\s+(?:at\s+)?)?(\d{1,2}):(\d{2})\s*([AaPp][Mm])?/);
+    if (!m) return null;
+    if (m[1]) {
+      mon = monthIndex(m[1]);
+      day = Number(m[2]);
+    }
+    hh = Number(m[3]) % (m[5] ? 12 : 24);
+    mm = Number(m[4]);
+    if (m[5] && /p/i.test(m[5])) hh += 12;
+  }
+  if (!(hh >= 0 && hh < 24 && mm >= 0 && mm < 60)) return null;
+  const d = new Date(now);
+  d.setSeconds(0, 0);
+  d.setHours(hh, mm);
+  if (day != null) {
+    if (mon < 0) return null;
+    d.setMonth(mon, day);
+    // ข้อความไม่บอกปี — วันที่ที่ผ่านไปเกินวันแปลว่าเป็นปีหน้า (เช่น เห็น "2 ม.ค." ตอนปลายธันวา)
+    if (d.getTime() < now - 24 * 3600 * 1000) d.setFullYear(d.getFullYear() + 1);
+  } else if (d.getTime() <= now) {
+    d.setDate(d.getDate() + 1);
+  }
+  return d.getTime();
+}
+
+function geminiZone(zone, now) {
+  const m = zone.match(/(\d+(?:\.\d+)?)\s*%/);
+  if (!m) return null;
+  const pct = parseFloat(m[1]);
+  if (!isFinite(pct) || pct > 100) return null;
+  return { pct, resetAt: geminiResetAt(zone, now) };
+}
+
+/** คืน { session, weekly } หรือ null ถ้าหน้ายังไม่ render / ไม่มีตัวเลข (ห้ามเดา 0%) */
+function parseGeminiUsagePage(text, now = Date.now()) {
+  const s = String(text || '');
+  const wi = s.search(/ขีดจำกัดรายสัปดาห์|Weekly\s+limit/i);
+  const ci = s.search(/การใช้งานปัจจุบัน|Current\s+usage/i);
+  const out = { session: null, weekly: null };
+  if (ci >= 0) out.session = geminiZone(s.slice(ci, wi > ci ? wi : ci + 300), now);
+  if (wi >= 0) out.weekly = geminiZone(s.slice(wi, wi + 300), now);
+  return out.session || out.weekly ? out : null;
+}
+
 module.exports = {
+  parseGeminiUsagePage,
   fetchLive,
   fetchCodexLive,
   fetchCodexApiLive,

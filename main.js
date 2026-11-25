@@ -207,7 +207,7 @@ async function collectLive() {
   // โควตาสดจากเว็บ (opt-in ทดลอง) ผ่าน session ที่ล็อกอินในหน้าต่างของแอป
   // Claude อยู่ในลูปนี้ด้วยแต่เป็น "ทางสำรอง" — API ทางการแม่นกว่าและถอดลิมิตกลับได้
   // จะถามเว็บเฉพาะตอน API ไม่ได้ผล (เคสหลักคือ token ของ CLI หมดอายุเพราะไม่ได้ใช้ CLI)
-  for (const id of ['claude', 'chatgpt']) {
+  for (const id of ['claude', 'chatgpt', 'gemini']) {
     const cp = config.providers[id];
     if (!cp?.enabled || !cp.liveWeb || out[id]?.data) continue;
     const prev = out[id]?.error; // เช่น API ของ Claude ล้มไปก่อนหน้าในรอบเดียวกัน
@@ -363,6 +363,17 @@ async function runPushUsage() {
     const cp = config.providers[p.id];
     if (!cp?.liveWeb && !cp?.liveUsage) delete p.liveError;
   }
+  // การ์ดที่มีแต่ % จากเว็บ (Gemini) แต่ยังไม่ได้ค่าสักตัว — ห้ามโชว์ 0% เหมือนเป็นของจริง
+  // บอกให้ไปเปิดโหมดเว็บ/ล็อกอินแทน (ข้อความ error ของรอบนี้บอกสาเหตุได้ตรงกว่า)
+  for (const p of data.providers) {
+    if (!p.webOnly || !p.ok || p.session.liveSource || p.weekly.liveSource) continue;
+    const cp = config.providers[p.id];
+    p.ok = false;
+    p.state = 'unconfigured';
+    p.message = !cp?.liveWeb
+      ? 'เปิด "โควตาสดจาก gemini.google.com" แล้วล็อกอินในหน้าตั้งค่า'
+      : p.liveError || 'กำลังอ่านจากหน้าเว็บ…';
+  }
   // ค่าที่ใช้แทนการ์ดทั้งใบ — การ์ดที่โควตาหลักมาจากเว็บให้ยึดรายสัปดาห์ ไม่ใช่บล็อก 5 ชม.
   // ต้องคิดที่เดียวแล้วส่งไปให้ทุกที่ใช้ (tray, แจ้งเตือน, หน้าปัดใน renderer)
   // ไม่งั้นแต่ละที่ตีความเองแล้วพูดคนละเรื่องกับที่การ์ดโชว์ — เคยทำให้ tray ขึ้น
@@ -469,10 +480,11 @@ function applyLiveWeb(p, live) {
     else if (cp?.manual?.resetAt > Date.now()) p.weekly.resetAt = cp.manual.resetAt;
   }
   p.live = true;
-  // ให้หน้าปัดหลักโชว์รอบจากเว็บแบบเดียวกับปักหมุด — ยกเว้น Claude ที่เว็บบอกรอบ 5 ชม.
-  // มาด้วย การ์ดจึงยึดบล็อก 5 ชม. ต่อได้เหมือนโหมด API ไม่ต้องสลับหน้าปัดไปมา
+  // ให้หน้าปัดหลักโชว์รอบจากเว็บแบบเดียวกับปักหมุด — ยกเว้น Claude และ Gemini ที่เว็บบอก
+  // รอบสั้นมาด้วย การ์ดจึงยึดรอบปัจจุบันต่อได้เหมือนโหมด API ไม่ต้องสลับหน้าปัดไปมา
   // (ChatGPT ห้ามทำแบบเดียวกัน — ฝั่งนั้น session คือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
-  p.webGauge = p.id === 'claude' && live.session ? false : !!live.weekly;
+  // เงื่อนไขนี้ต้องตรงกับ applyStale ใน liveusage.js เป๊ะ ๆ
+  p.webGauge = (p.id === 'claude' || p.webOnly) && live.session ? false : !!live.weekly;
 }
 
 /**
@@ -751,6 +763,7 @@ ipcMain.handle('get-history', () => ({
 ipcMain.handle('calibrate', (_e, { id, sessionPct, weeklyPct }) => {
   const p = config.providers[id];
   if (!p) return { ok: false, message: 'ไม่พบผู้ให้บริการ' };
+  if (p.webOnly) return { ok: false, message: 'การ์ดนี้ใช้ % จากเว็บโดยตรง ไม่มี token ให้ปรับเทียบ' };
   // โหมดสดให้ % ทางการอยู่แล้วและแม่นกว่า — ปรับเทียบทับจะได้ลิมิตที่ค้างอยู่กับรอบเก่า
   // (liveWeb ไม่นับ เพราะมันคุมแค่รายสัปดาห์จากเว็บ ส่วนแถวบล็อกยังเป็น token ของ CLI)
   if (p.liveUsage) {
