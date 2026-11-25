@@ -89,16 +89,12 @@ function mascotSvg(id, mood) {
       ${mascotFace(mood, 20)}
     </svg>`;
   }
-  // grok — ยูเอฟโอสีม่วง
+  // gemini — หยดน้ำสีฟ้า มีประกายดาวเล็ก ๆ ลอยข้างตัว (ฝาแฝด = Gemini)
   return `<svg viewBox="0 0 36 36" aria-hidden="true">
-    <line class="ant" x1="18" y1="7" x2="18" y2="4"/>
-    <circle class="ant-tip" cx="18" cy="3" r="1.5"/>
-    <circle class="body" cx="18" cy="16" r="8.5"/>
-    ${mascotFace(mood, 14.5, 3)}
-    <ellipse class="saucer" cx="18" cy="25" rx="14.5" ry="5"/>
-    <circle class="lamp" cx="7.5" cy="24.5" r="1.2"/>
-    <circle class="lamp l2" cx="18" cy="27" r="1.2"/>
-    <circle class="lamp l3" cx="28.5" cy="24.5" r="1.2"/>
+    <path class="body" d="M18 3 C14 9 7 15.5 7 22.5 A11 11 0 0 0 29 22.5 C29 15.5 22 9 18 3 Z"/>
+    <path class="shine" d="M11.5 21 q0.6 -4.5 4 -8.5"/>
+    <path class="twin" d="M30.5 2.5 q0.7 2.6 3 3.3 q-2.3 0.7 -3 3.3 q-0.7 -2.6 -3 -3.3 q2.3 -0.7 3 -3.3 Z"/>
+    ${mascotFace(mood, 22)}
   </svg>`;
 }
 
@@ -120,7 +116,7 @@ function cardHtml(p) {
     </section>`;
   }
 
-  // การ์ดที่ค่าหลักมาจากเว็บ (ปักหมุดด้วยมือ หรือ Grok สด) ให้เกจโชว์ % รายสัปดาห์แทนบล็อก 5 ชม.
+  // การ์ดที่ค่าหลักมาจากเว็บ (ปักหมุดด้วยมือ หรือเว็บสด) ให้เกจโชว์ % รายสัปดาห์แทนบล็อก 5 ชม.
   const webGauge = p.manual || p.webGauge;
   // main คิด headline มาให้แล้ว (ดู pushUsage) ใช้ของเขาเป็นหลักเพื่อให้ tray/แจ้งเตือน
   // พูดตรงกับหน้าปัดเสมอ — คำนวณเองเป็นทางสำรองสำหรับ demo mock ที่ไม่มีฟิลด์นี้
@@ -232,7 +228,7 @@ setInterval(tick, 1000);
 
 /* ---------- ไอคอนถาดระบบพร้อมตัวเลข % ---------- */
 function paintTray() {
-  // ใช้ headline เดียวกับหน้าปัด ไม่งั้นการ์ดที่ยึดโควตาเว็บ (เช่น Grok 95% แดง)
+  // ใช้ headline เดียวกับหน้าปัด ไม่งั้นการ์ดที่ยึดโควตาเว็บ (เช่น ChatGPT 95% แดง)
   // จะได้ไอคอน tray เป็น 0% สีปกติ คนที่ย่อลง tray จะไม่เห็นสัญญาณเตือนเลย
   const headline = (p) => p.headline?.pct ?? p.session.pct;
   const top = state.providers.filter((p) => p.state === 'ok').sort((a, b) => headline(b) - headline(a))[0];
@@ -358,7 +354,7 @@ document.querySelectorAll('.seg-b').forEach((b) => {
 
 /* ---------- หน้าตั้งค่า ---------- */
 // การ์ดที่มีโหมดโควตาสดจากเว็บ (ล็อกอินในหน้าต่างแอป — ดู src/webquota.js)
-const WEB_HOST = { claude: 'claude.ai', grok: 'grok.com', chatgpt: 'chatgpt.com' };
+const WEB_HOST = { claude: 'claude.ai', chatgpt: 'chatgpt.com' };
 const PLANS = [
   ['auto', 'อัตโนมัติ (P90)'],
   ['pro', 'Pro'],
@@ -394,7 +390,7 @@ function amountLabel(p, key) {
 
 /**
  * ป้ายบอกที่มาของตัวเลขบนหน้าปัด — ต้องยึด headline.source ไม่ใช่ธง p.live ของทั้งการ์ด
- * การ์ดหนึ่งใบมีได้ทั้งค่าสดและค่าปักหมุดพร้อมกัน (Grok: โควตาแชทสด แต่รายสัปดาห์ปักไว้)
+ * การ์ดหนึ่งใบมีได้ทั้งค่าสดและค่าปักหมุดพร้อมกัน (เช่น โควตาแชทสด แต่รายสัปดาห์ปักไว้)
  * ถ้าดูแค่ p.live จะขึ้น "● สด" ทั้งที่เลขบนหน้าปัดเป็นค่าที่ปักไว้เมื่อหลายวันก่อน
  */
 function sourceBadge(p) {
@@ -496,7 +492,13 @@ function renderSettings() {
         <button class="btn" data-act="web-test">ทดสอบ</button>
         <button class="btn cal-clear" data-act="web-logout">ออกจากระบบ</button></p>
       </div>` : ''}
-      ${p.id !== 'claude' ? `
+      ${p.id === 'gemini' ? `
+      <div class="field" style="margin-bottom:8px">
+        <p class="cal-note">อ่านจากประวัติแชตของ Gemini CLI ในเครื่องล้วน ไม่ต่อเน็ต —
+        Google ไม่ได้บอก % โควตาไว้ในไฟล์ ตัวเลขบนการ์ดจึงเป็นค่าประมาณเทียบกับการใช้ของคุณเอง
+        (แพลน "อัตโนมัติ") ถ้ารู้ % จริง ปรับเทียบด้านบนได้</p>
+      </div>` : ''}
+      ${p.id === 'chatgpt' ? `
       <div class="field">
         <label>ปักหมุด % จากหน้าเว็บ (รายสัปดาห์)</label>
         <div class="cal-row">
@@ -624,7 +626,7 @@ document.addEventListener('click', async (e) => {
       return;
     }
     if (!(resetAt > Date.now())) {
-      note.textContent = 'เลือกเวลารีเซ็ตที่ยังมาไม่ถึง (ดูจากหน้า Usage ของ grok.com)';
+      note.textContent = 'เลือกเวลารีเซ็ตที่ยังมาไม่ถึง (ดูจากหน้า Usage ของผู้ให้บริการ)';
       return;
     }
     config = await window.api.setProvider(group.dataset.id, { manual: { pct: pctV, resetAt, at: Date.now() } });

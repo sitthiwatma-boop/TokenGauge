@@ -11,6 +11,8 @@ const HOME = os.homedir();
  * aggregation:
  *   'sum'            = ทุกบรรทัดคือยอดใช้ครั้งนั้น ๆ ให้บวกสะสม (Claude Code)
  *   'cumulative-max' = ตัวเลขในไฟล์เป็นยอดสะสมของ session ให้เอาค่าสูงสุดต่อไฟล์ (Codex CLI)
+ *   'gemini'         = ไฟล์ session ของ Gemini CLI (JSON ก้อนเดียวหรือ JSONL) แต่ละข้อความ
+ *                      มียอดของเทิร์นนั้น ให้บวกสะสม (ดู parseGeminiFile ใน usage.js)
  */
 const DEFAULT_PROVIDERS = {
   claude: {
@@ -50,25 +52,22 @@ const DEFAULT_PROVIDERS = {
     manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ
     windows: { session: true, weekly: true }
   },
-  grok: {
-    id: 'grok',
-    name: 'Grok',
-    subtitle: 'Grok CLI',
-    accent: '#A78BFA',
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini',
+    subtitle: 'Gemini CLI',
+    accent: '#4C8DF6',
     enabled: true,
-    roots: [
-      path.join(HOME, '.grok', 'history'),
-      path.join(HOME, '.grok'),
-      path.join(HOME, '.config', 'grok')
-    ],
-    aggregation: 'sum',
+    // Gemini CLI เก็บประวัติแชตไว้ที่ ~/.gemini/tmp/<hash ของโปรเจกต์>/chats/session-*.json
+    // (รุ่นใหม่อาจเป็น .jsonl) — อ่านเฉพาะไฟล์ session-* ใต้ tmp เท่านั้น
+    // ห้ามขยาย root ขึ้นไปที่ ~/.gemini เพราะในนั้นมี oauth_creds.json (ผิดกฎข้อ 1)
+    roots: [path.join(HOME, '.gemini', 'tmp')],
+    aggregation: 'gemini',
     cacheReadWeight: 0.1,
     plan: 'auto',
     calibration: null,
     liveLimit: null,
-    liveSnapshot: null, // % สดล่าสุดที่วัดได้ — ใช้เป็นพื้นตอนดึงสดไม่สำเร็จ
-    manual: null, // { pct, resetAt } — ปักหมุด % รายสัปดาห์จากเว็บด้วยมือ (ใช้เมื่อไม่เปิด liveWeb)
-    liveWeb: false, // opt-in ทดลอง: % สดจากเว็บผ่าน session ที่ล็อกอินในแอปเอง (src/webquota.js)
+    liveSnapshot: null,
     windows: { session: true, weekly: true }
   }
 };
@@ -86,7 +85,7 @@ const DEFAULTS = {
   refreshSeconds: 60,
   // ราคาโดยประมาณ "บาทต่อ 1 ล้าน token (ถ่วงน้ำหนักแคชแล้ว)" — เป็นค่าเดาหยาบ
   // ให้พอเห็นภาพ ไม่ใช่ยอดเรียกเก็บจริง แก้ตัวเลขเองได้ใน config.json
-  pricing: { claude: 150, chatgpt: 100, grok: 80 },
+  pricing: { claude: 150, chatgpt: 100, gemini: 80 },
   alertThreshold: 90,
   showInTaskbar: true,
   alwaysOnTop: false,
@@ -116,10 +115,26 @@ function deepMerge(base, patch) {
   return out;
 }
 
+/** ผู้ให้บริการที่เลิกรองรับแล้ว — ลบทิ้งตอนโหลด ไม่งั้น deepMerge จะเอากลับมาจากไฟล์เดิม
+ * แล้วการ์ดเก่าโผล่ขึ้นมาอีก (Grok เลิกรองรับ พ.ย. 2026 แทนด้วย Gemini) */
+const RETIRED_PROVIDERS = ['grok'];
+
 function load(app) {
   try {
     const raw = fs.readFileSync(configPath(app), 'utf8');
-    return deepMerge(DEFAULTS, JSON.parse(raw));
+    const saved = JSON.parse(raw);
+    const retired = [];
+    for (const id of RETIRED_PROVIDERS) {
+      if (saved.providers?.[id]) {
+        delete saved.providers[id];
+        retired.push(id);
+      }
+      if (saved.pricing) delete saved.pricing[id];
+    }
+    const cfg = deepMerge(DEFAULTS, saved);
+    // บอก main ว่ามีของเก่าถูกลบ — จะได้ล้าง session เว็บของเจ้านั้นทิ้งด้วย (ไม่ได้เขียนลงไฟล์)
+    if (retired.length) Object.defineProperty(cfg, 'retired', { value: retired, enumerable: false });
+    return cfg;
   } catch {
     return JSON.parse(JSON.stringify(DEFAULTS));
   }
@@ -132,4 +147,4 @@ function save(app, cfg) {
   return cfg;
 }
 
-module.exports = { load, save, DEFAULTS, PLAN_PRESETS, configPath };
+module.exports = { load, save, DEFAULTS, PLAN_PRESETS, RETIRED_PROVIDERS, configPath };

@@ -10,7 +10,7 @@ const path = require('path');
 
 const usage = require('../src/usage');
 const liveusage = require('../src/liveusage');
-const { fetchCodexLive, parseGrokRateLimits, parseGrokText, parseUsagePage, usableSnapshot } = liveusage;
+const { fetchCodexLive, parseWebRateLimits, parseWebText, usableSnapshot } = liveusage;
 const history = require('../src/history');
 const { PLAN_PRESETS } = require('../src/config');
 
@@ -317,22 +317,22 @@ t('ไฟล์ไม่มี rate_limits เลย → null', () => {
   eq(fetchCodexLive([dir]), null);
 });
 
-console.log('\nliveusage.js (Grok web)');
+console.log('\nliveusage.js (ตัวแปลงโควตาจากเว็บ)');
 
 t('rate-limits ตรง ๆ: เหลือ 20/80 = ใช้ไป 75% หน้าต่างสั้นเป็น session', () => {
-  const r = parseGrokRateLimits({ windowSizeSeconds: 7200, remainingQueries: 20, totalQueries: 80 }, NOW);
+  const r = parseWebRateLimits({ windowSizeSeconds: 7200, remainingQueries: 20, totalQueries: 80 }, NOW);
   eq(Math.round(r.session.pct), 75);
   eq(r.weekly, null);
 });
 
 t('ไม่บอกขนาดหน้าต่าง → จัดเป็นรายสัปดาห์ (ช่องเดียวกับปักหมุด)', () => {
-  const r = parseGrokRateLimits({ remainingTokens: 30, totalTokens: 100 }, NOW);
+  const r = parseWebRateLimits({ remainingTokens: 30, totalTokens: 100 }, NOW);
   eq(Math.round(r.weekly.pct), 70);
   eq(r.session, null);
 });
 
 t('ซ้อนหลายชั้นหลายหน้าต่าง → เอาตัวที่ใช้ไปมากสุดของแต่ละกลุ่ม', () => {
-  const r = parseGrokRateLimits({
+  const r = parseWebRateLimits({
     a: { windowSizeSeconds: 86400, remainingQueries: 90, totalQueries: 100 },
     b: { windowSizeSeconds: 604800, remainingQueries: 10, totalQueries: 100 }
   }, NOW);
@@ -340,46 +340,46 @@ t('ซ้อนหลายชั้นหลายหน้าต่าง → 
 });
 
 t('waitTimeSeconds → resetAt = ตอนนี้ + เวลารอ', () => {
-  const r = parseGrokRateLimits({ windowSizeSeconds: 7200, remainingQueries: 0, totalQueries: 80, waitTimeSeconds: 3600 }, NOW);
+  const r = parseWebRateLimits({ windowSizeSeconds: 7200, remainingQueries: 0, totalQueries: 80, waitTimeSeconds: 3600 }, NOW);
   eq(r.session.pct, 100);
   eq(r.session.resetAt, NOW + 3600 * 1000);
 });
 
 t('แบบหน้า Usage: usedPercent + เวลารีเซ็ต ISO → weekly', () => {
-  const r = parseGrokRateLimits({ imagine: { usedPercent: 63, resetsAt: new Date(NOW + 3 * 24 * H).toISOString() } }, NOW);
+  const r = parseWebRateLimits({ imagine: { usedPercent: 63, resetsAt: new Date(NOW + 3 * 24 * H).toISOString() } }, NOW);
   eq(r.weekly.pct, 63);
   eq(r.weekly.resetAt, NOW + 3 * 24 * H);
   eq(r.session, null);
 });
 
 t('เวลารีเซ็ตเป็น epoch วินาที → แปลงเป็น ms', () => {
-  const r = parseGrokRateLimits({ percentUsed: 40, resetTime: Math.floor((NOW + 24 * H) / 1000) }, NOW);
+  const r = parseWebRateLimits({ percentUsed: 40, resetTime: Math.floor((NOW + 24 * H) / 1000) }, NOW);
   eq(r.weekly.pct, 40);
   eq(r.weekly.resetAt, Math.floor((NOW + 24 * H) / 1000) * 1000);
 });
 
 t('โครงไม่รู้จัก/ว่าง → null ห้ามเดา', () => {
-  eq(parseGrokRateLimits({ hello: 'world' }, NOW), null);
-  eq(parseGrokRateLimits(null, NOW), null);
-  eq(parseGrokRateLimits({ totalQueries: 0, remainingQueries: 0 }, NOW), null);
+  eq(parseWebRateLimits({ hello: 'world' }, NOW), null);
+  eq(parseWebRateLimits(null, NOW), null);
+  eq(parseWebRateLimits({ totalQueries: 0, remainingQueries: 0 }, NOW), null);
 });
 
-t('parseGrokText: JSON ตรง ๆ ก็อ่านได้', () => {
-  const r = parseGrokText('{"usedPercent":63}', NOW);
+t('parseWebText: JSON ตรง ๆ ก็อ่านได้', () => {
+  const r = parseWebText('{"usedPercent":63}', NOW);
   eq(r.weekly.pct, 63);
 });
 
-t('parseGrokText: payload แบบ RSC (JSON ฝังในข้อความ + escape) → เจอ 63%', () => {
+t('parseWebText: payload แบบ RSC (JSON ฝังในข้อความ + escape) → เจอ 63%', () => {
   const iso = new Date(NOW + 3 * 24 * H).toISOString();
   const rsc = `0:["$","div",null]\n1:I{"usage":[{\\"name\\":\\"imagine\\",\\"usedPercent\\":63,\\"resetsAt\\":\\"${iso}\\"}]}\n2:null`;
-  const r = parseGrokText(rsc, NOW);
+  const r = parseWebText(rsc, NOW);
   eq(r.weekly.pct, 63);
   eq(r.weekly.resetAt, NOW + 3 * 24 * H);
 });
 
 t('แบบ ChatGPT: used_percent + window_minutes → จัดกลุ่มตามขนาดหน้าต่าง', () => {
   const reset = secs(NOW + 2 * 24 * H);
-  const r = parseGrokText(JSON.stringify({
+  const r = parseWebText(JSON.stringify({
     rate_limits: {
       primary: { used_percent: 81, window_minutes: 10080, resets_at: reset },
       secondary: { used_percent: 12, window_minutes: 300 }
@@ -391,89 +391,21 @@ t('แบบ ChatGPT: used_percent + window_minutes → จัดกลุ่ม
 });
 
 t('คีย์แบบ "% ที่เหลือ" (remainingPercent) → กลับด้านเป็น % ที่ใช้ไป', () => {
-  const r = parseGrokRateLimits({ remainingPercent: 0, resetsAt: new Date(NOW + 2 * 24 * H).toISOString() }, NOW);
+  const r = parseWebRateLimits({ remainingPercent: 0, resetsAt: new Date(NOW + 2 * 24 * H).toISOString() }, NOW);
   eq(r.weekly.pct, 100);
-  const r2 = parseGrokRateLimits({ percentLeft: 37 }, NOW);
+  const r2 = parseWebRateLimits({ percentLeft: 37 }, NOW);
   eq(r2.weekly.pct, 63);
 });
 
 t('คู่ used/limit → คำนวณ % เอง', () => {
-  const r = parseGrokRateLimits({ used: 45, limit: 60, resetsAt: new Date(NOW + 24 * H).toISOString() }, NOW);
+  const r = parseWebRateLimits({ used: 45, limit: 60, resetsAt: new Date(NOW + 24 * H).toISOString() }, NOW);
   eq(Math.round(r.weekly.pct), 75);
   eq(r.weekly.resetAt, NOW + 24 * H);
 });
 
-t('parseGrokText: ข้อความไม่มีอะไรเลย → null', () => {
-  eq(parseGrokText('hello world {"foo":1}', NOW), null);
-  eq(parseGrokText('', NOW), null);
-});
-
-/* ---------- อ่านจากหน้า usage ตรง ๆ (parseUsagePage) ----------
- * grok.com ย้ายไป gRPC-web + protobuf (8 ส.ค. 2026) endpoint จึงอ่านไม่ได้อีก
- * เหลือทางเดียวคืออ่านข้อความที่ผู้ใช้เห็นบนหน้าจอ — ข้อความจริงหน้าตาแบบนี้
- */
-const GROK_PAGE = `Usage
-Weekly SuperGrok Limit
-70% used
-Imagine 69%
-Chat 1%
-Resets August 9, 2026 at 2:52 PM
-Extra Usage Credits
-US$0.00
-Additional Credits`;
-
-t('หน้า usage: อ่าน % รวมกับเวลารีเซ็ต ไม่ใช่ตัวแยกรายผลิตภัณฑ์', () => {
-  const r = parseUsagePage(GROK_PAGE, NOW);
-  eq(r.weekly.pct, 70); // ไม่ใช่ 69 (Imagine) หรือ 1 (Chat) — ตัวที่ผู้ใช้เห็นคือผลรวม
-  eq(r.session, null);
-  eq(r.weekly.resetAt, Date.parse('August 9, 2026 2:52 PM'));
-});
-
-t('หน้า usage: ไม่มีเวลารีเซ็ตก็ยังคืน % ได้ (ให้ไปยืมเวลาจากค่าปักหมุด)', () => {
-  const r = parseUsagePage('Weekly SuperGrok Limit\n42% used', NOW);
-  eq(r.weekly.pct, 42);
-  eq(r.weekly.resetAt, null);
-});
-
-t('หน้า usage: เวลารีเซ็ตที่ผ่านไปแล้วต้องทิ้ง — หน้าเว็บอาจค้างค่าเก่า', () => {
-  const r = parseUsagePage('12% used\nResets January 1, 2020 at 1:00 AM', NOW);
-  eq(r.weekly.pct, 12);
-  eq(r.weekly.resetAt, null);
-});
-
-t('หน้า usage: ตัวเลขที่มาจาก textContent (ไม่มีเว้นวรรคคั่น) ก็ต้องอ่านออก', () => {
-  // เคสจริง: innerText ข้ามตัวเลขใหญ่ที่ยัง fade-in อยู่ ได้มาแต่ "used" เปล่า ๆ
-  // webquota จึงแนบ textContent ต่อท้าย ซึ่งเชื่อม element ติดกันหมด
-  const r = parseUsagePage('Weekly SuperGrok Limit\nused\nImagine 69%\n70%usedResets August 9, 2026 at 2:52 PM', NOW);
-  eq(r.weekly.pct, 70);
-  eq(r.weekly.resetAt, Date.parse('August 9, 2026 2:52 PM'));
-});
-
-/* เคสจริงของ grok.com 8 ส.ค. 2026 — ตัวเลขรวมวาดด้วย CSS pseudo-element จึงไม่มีใน DOM
- * ทั้ง innerText และ textContent (ได้มาแต่ "Weekly SuperGrok Limitused") เหลือแต่รายการย่อย */
-const GROK_NO_TOTAL =
-  'Weekly SuperGrok Limit\nused\nResets August 9, 2026 at 2:52 PM\nImagine\n69%\nChat\n1%\nExtra Usage Credits\nUS$0.00';
-
-t('หน้า usage: ไม่มีตัวเลขรวมในหน้า → บวกรายการย่อยได้เท่ากับที่เว็บโชว์', () => {
-  const r = parseUsagePage(GROK_NO_TOTAL, NOW);
-  eq(r.weekly.pct, 70); // 69 + 1
-  eq(r.weekly.resetAt, Date.parse('August 9, 2026 2:52 PM'));
-});
-
-t('หน้า usage: สองมุมมองในก้อนเดียว ห้ามบวกซ้ำเป็นสองเท่า', () => {
-  // webquota ส่ง innerText กับ textContent มาคั่นด้วย @@SPLIT@@ — ต้องแกะทีละก้อน
-  const r = parseUsagePage(GROK_NO_TOTAL + '\n@@SPLIT@@\n' + GROK_NO_TOTAL.replace(/\n/g, ''), NOW);
-  eq(r.weekly.pct, 70); // ไม่ใช่ 140
-});
-
-t('หน้า usage: ผลรวมเกิน 100% = อ่านโซนผิด ต้องไม่เดา', () => {
-  eq(parseUsagePage('Weekly Limit\nA 80%\nB 60%\nExtra Usage Credits', NOW), null);
-});
-
-t('หน้า usage: หน้าที่ยังไม่ render / ไม่มีตัวเลข → null ห้ามเดา 0%', () => {
-  eq(parseUsagePage('Loading…', NOW), null);
-  eq(parseUsagePage('', NOW), null);
-  eq(parseUsagePage(null, NOW), null);
+t('parseWebText: ข้อความไม่มีอะไรเลย → null', () => {
+  eq(parseWebText('hello world {"foo":1}', NOW), null);
+  eq(parseWebText('', NOW), null);
 });
 
 /* ---------- ค่าสดล่าสุดที่ยังใช้อ้างอิงได้ (usableSnapshot) ----------
@@ -518,7 +450,7 @@ t('ไม่มีเวลารีเซ็ต หรือ % อ่านไ�
 });
 
 t('โครงแบบ claude.ai: five_hour/seven_day + utilization → แยกช่องถูกจากชื่อคีย์', () => {
-  const r = parseGrokRateLimits(
+  const r = parseWebRateLimits(
     {
       five_hour: { utilization: 29, resets_at: new Date(NOW + 2 * H).toISOString() },
       seven_day: { utilization: 11, resets_at: new Date(NOW + 5 * 24 * H).toISOString() }
@@ -531,7 +463,7 @@ t('โครงแบบ claude.ai: five_hour/seven_day + utilization → แย
 });
 
 t('โครงแบบ claude.ai ที่ห่อไว้อีกชั้น → ยังหาเจอ', () => {
-  const r = parseGrokText(
+  const r = parseWebText(
     JSON.stringify({ data: { usage: { fiveHour: { utilization: 42, resetsAt: new Date(NOW + H).toISOString() } } } }),
     NOW
   );
@@ -561,14 +493,14 @@ t('applyStale: ค่าประมาณ 0% แต่เคยวัดได�
   eq(p.live, undefined, 'ห้ามประกาศว่าสด');
 });
 
-t('applyStale: ค่าค้างจากเว็บของ Grok → หน้าปัดยังยึดรายสัปดาห์เหมือนตอนสด', () => {
-  const p = { id: 'grok', session: { pct: 5 }, weekly: { pct: 0 } };
+t('applyStale: ค่าค้างจากเว็บของ ChatGPT → หน้าปัดยังยึดรายสัปดาห์เหมือนตอนสด', () => {
+  const p = { id: 'chatgpt', session: { pct: 5 }, weekly: { pct: 0 } };
   liveusage.applyStale(p, {
     source: 'web',
     session: { pct: 20, resetAt: NOW + H, at: NOW },
     weekly: { pct: 63, resetAt: NOW + 2 * 24 * H, at: NOW }
   });
-  eq(p.webGauge, true, 'Grok: session คือโควตาแชท ไม่ใช่ตัวที่บีบจริง');
+  eq(p.webGauge, true, 'ChatGPT: session คือโควตาแชท ไม่ใช่ตัวที่บีบจริง');
   eq(p.weekly.pct, 63);
 });
 
@@ -627,6 +559,98 @@ t('ตัดข้อมูลเก่ากว่า 90 วันทิ้ง'
   const onDisk = JSON.parse(fs.readFileSync(path.join(dir, 'history.json'), 'utf8'));
   eq(onDisk.providers.claude[String(old)], undefined, 'ค่าเก่าต้องถูกลบ');
   eq(onDisk.providers.claude[String(hour)], 50);
+});
+
+/* ---------- Gemini CLI ---------- */
+console.log('\nusage.js (Gemini CLI)');
+
+function geminiMsg(id, ts, tokens) {
+  return { id, type: 'gemini', timestamp: iso(ts), content: 'x', model: 'gemini-2.5-pro', tokens };
+}
+function geminiDir(files) {
+  const dir = path.join(TMP, 'gm' + seq++, 'abc123', 'chats');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), text, 'utf8');
+  return path.dirname(path.dirname(dir)); // = ~/.gemini/tmp
+}
+
+t('Gemini: cached อยู่ใน input แล้ว ต้องหักออก ไม่งั้นแคชถูกนับสองรอบ', () => {
+  // ตัวเลขจาก session จริง: total = input + output (cached เป็นส่วนหนึ่งของ input)
+  const ev = usage.parseGeminiText(JSON.stringify({
+    sessionId: 's1',
+    messages: [
+      { id: 'u1', type: 'user', timestamp: iso(NOW - H), content: 'hi' },
+      geminiMsg('g1', NOW - H, { input: 64754, output: 509, cached: 58371, thoughts: 0, tool: 0, total: 65263 })
+    ]
+  }), NOW);
+  eq(ev.length, 1, 'ข้อความของผู้ใช้ไม่มี tokens ต้องไม่ถูกนับ');
+  eq(ev[0].input, 64754 - 58371);
+  eq(ev[0].cacheRead, 58371);
+  eq(ev[0].input + ev[0].output + ev[0].cacheRead, 65263, 'รวมกลับต้องเท่ากับ total');
+});
+
+t('Gemini: thoughts คิดเป็น output', () => {
+  const ev = usage.parseGeminiText(JSON.stringify({
+    sessionId: 's1',
+    messages: [geminiMsg('g1', NOW, { input: 22629, output: 805, cached: 0, thoughts: 3174, tool: 0, total: 26608 })]
+  }), NOW);
+  eq(ev[0].output, 805 + 3174);
+  eq(ev[0].input + ev[0].output, 26608);
+});
+
+t('Gemini: แบบ JSONL ข้อความเดิมถูกเขียนซ้ำ → ยึดรุ่นล่าสุด ไม่นับซ้ำ', () => {
+  const lines = [
+    { sessionId: 's2', startTime: iso(NOW - H) },
+    geminiMsg('g1', NOW - H, { input: 100, output: 1, cached: 0 }),
+    geminiMsg('g1', NOW - H, { input: 100, output: 50, cached: 0 }),
+    geminiMsg('g2', NOW, { input: 10, output: 5, cached: 0 })
+  ].map((l) => JSON.stringify(l));
+  const ev = usage.parseGeminiText(lines.join('\n') + '\n{"broken', NOW);
+  eq(ev.length, 2);
+  eq(ev[0].output, 50);
+});
+
+t('Gemini: computeProvider อ่าน session-*.json ใน tmp และไม่หยิบไฟล์อื่น', () => {
+  const root = geminiDir({
+    'session-2026-08-05T11-00-aaaa.json': JSON.stringify({
+      sessionId: 's3',
+      messages: [geminiMsg('g1', NOW - H, { input: 1000, output: 200, cached: 0 })]
+    }),
+    // /compress เขียนไฟล์ใหม่ด้วย sessionId เดิม — ข้อความเดิมต้องไม่ถูกนับสองรอบ
+    'session-2026-08-05T12-00-aaaa.json': JSON.stringify({
+      sessionId: 's3',
+      messages: [
+        geminiMsg('g1', NOW - H, { input: 1000, output: 200, cached: 0 }),
+        geminiMsg('g2', NOW - 0.5 * H, { input: 300, output: 100, cached: 0 })
+      ]
+    }),
+    'checkpoint-foo.json': JSON.stringify({ messages: [geminiMsg('x', NOW, { input: 999999, output: 0 })] }),
+    'logs.json': JSON.stringify([{ tokens: { input: 999999 } }])
+  });
+  const r = usage.computeProvider(
+    { id: 'gemini', name: 'Gemini', roots: [root], aggregation: 'gemini', cacheReadWeight: 0.1, plan: 'auto' },
+    PLAN_PRESETS, { now: NOW }
+  );
+  eq(r.state, 'ok');
+  eq(r.files, 2);
+  eq(r.totalEvents, 2);
+  eq(r.session.tokens, 1600);
+});
+
+t('config: providers.grok ที่ค้างใน config.json เดิมถูกลบตอนโหลด', () => {
+  const dir = path.join(TMP, 'cfg' + seq++);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({
+    pricing: { claude: 150, grok: 80 },
+    providers: { grok: { id: 'grok', name: 'Grok', enabled: true, liveWeb: true }, claude: { plan: 'max20' } }
+  }), 'utf8');
+  const cfg = require('../src/config').load({ getPath: () => dir });
+  eq(cfg.providers.grok, undefined);
+  eq(cfg.pricing.grok, undefined);
+  eq(cfg.providers.claude.plan, 'max20', 'ค่าอื่นของผู้ใช้ต้องอยู่ครบ');
+  ok(cfg.providers.gemini, 'ต้องมีการ์ด Gemini มาแทน');
+  eq(cfg.retired, ['grok']);
+  eq(Object.keys(JSON.parse(JSON.stringify(cfg))).includes('retired'), false, 'retired ห้ามถูกเขียนลงไฟล์');
 });
 
 /* ---------- สรุปผล ---------- */

@@ -16,13 +16,16 @@ const MOCK={updatedAt:now,providers:[
   session:{tokens:44700,limit:60000,pct:74.5,resetAt:now+66*60e3,liveSource:'api',limitFromPct:true},
   weekly:{tokens:388000,limit:720000,pct:54,liveSource:'api',limitFromPct:true},
   burnPerHour:28800,etaMs:32*60e3,spark:rnd(14000,2)},
- {id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#A78BFA',state:'unconfigured',
-  message:'ยังไม่พบโฟลเดอร์ log — ตั้ง path ได้ในหน้าตั้งค่า'}
+ {id:'gemini',name:'Gemini',subtitle:'Gemini CLI',accent:'#4C8DF6',state:'ok',ok:true,plan:'auto',planLabel:'อัตโนมัติ (P90)',
+  estimating:false,files:6,windowSource:{session:'block',weekly:'rolling'},headline:{window:'session',pct:31,resetAt:now+3.2*3600e3,source:'estimate'},
+  session:{tokens:62000,limit:200000,pct:31,resetAt:now+3.2*3600e3},
+  weekly:{tokens:610000,limit:2400000,pct:25.4},
+  burnPerHour:34000,etaMs:4.1*3600e3,spark:rnd(9000,3)}
 ]};
 const CFG={refreshSeconds:60,alertThreshold:90,showInTaskbar:true,alwaysOnTop:false,startWithWindows:false,weeklyMode:'rolling',
  providers:{claude:{id:'claude',name:'Claude',subtitle:'Claude Code',accent:'#E8794A',enabled:true,plan:'max5',liveUsage:true,calibration:null,liveLimit:{session:993000,weekly:22500000,at:now},roots:['C:\\Users\\you\\.claude\\projects']},
  chatgpt:{id:'chatgpt',name:'ChatGPT',subtitle:'Codex CLI',accent:'#19C37D',enabled:true,plan:'plus',roots:['C:\\Users\\you\\.codex\\sessions']},
- grok:{id:'grok',name:'Grok',subtitle:'Grok CLI',accent:'#A78BFA',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.grok']}}};
+ gemini:{id:'gemini',name:'Gemini',subtitle:'Gemini CLI',accent:'#4C8DF6',enabled:true,plan:'auto',roots:['C:\\Users\\you\\.gemini\\tmp']}}};
 let _cb=null;
 window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
  setProvider:async(id,p)=>{Object.assign(CFG.providers[id],p);const m=MOCK.providers.find(x=>x.id===id);if(m&&p.plan){m.plan=p.plan;m.planLabel={auto:'อัตโนมัติ (P90)',pro:'Pro',max5:'Max 5x',max20:'Max 20x',plus:'Plus'}[p.plan];_cb&&_cb(MOCK);}if(m&&('calibration' in p)&&!p.calibration){m.calibrated=false;_cb&&_cb(MOCK);}if(m&&('liveUsage' in p)){m.live=!!p.liveUsage;_cb&&_cb(MOCK);}return CFG;},
@@ -39,11 +42,11 @@ window.api={getConfig:async()=>CFG,setConfig:async p=>Object.assign(CFG,p),
   _cb&&_cb(MOCK);return{ok:true,calibration:cal,config:CFG};},
  refresh:async()=>{MOCK.updatedAt=Date.now();_cb&&_cb(MOCK);},
  getHistory:async()=>{const slots={};const hn=Math.floor(Date.now()/3600e3)*3600e3;
-  for(const [id,seed,amp] of [['claude',1,90000],['chatgpt',2,40000],['grok',3,15000]]){
+  for(const [id,seed,amp] of [['claude',1,90000],['chatgpt',2,40000],['gemini',3,15000]]){
    const s={};for(let i=0;i<720;i++){const t=hn-i*3600e3;const hr=new Date(t).getHours();
     if(hr>=8&&hr<=23){const v=Math.round(Math.max(0,(Math.sin(i/9+seed)+0.7))*amp*Math.random());if(v>500)s[t]=v;}}
    slots[id]=s;}
-  return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'grok',name:'Grok',accent:'#A78BFA'}],slots};},
+  return {providers:[{id:'claude',name:'Claude',accent:'#E8794A'},{id:'chatgpt',name:'ChatGPT',accent:'#19C37D'},{id:'gemini',name:'Gemini',accent:'#4C8DF6'}],slots};},
  pickFolder:async()=>null,exportCsv:async()=>null,exportReport:async()=>null,
  webLogin:async()=>true,webLogout:async()=>true,
  webTest:async()=>({ok:false,error:'โหมดตัวอย่างในเบราว์เซอร์ ไม่ต่อเน็ตจริง'}),

@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, dialog, shell, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, dialog, shell, screen, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const cfgStore = require('./src/config');
@@ -207,7 +207,7 @@ async function collectLive() {
   // โควตาสดจากเว็บ (opt-in ทดลอง) ผ่าน session ที่ล็อกอินในหน้าต่างของแอป
   // Claude อยู่ในลูปนี้ด้วยแต่เป็น "ทางสำรอง" — API ทางการแม่นกว่าและถอดลิมิตกลับได้
   // จะถามเว็บเฉพาะตอน API ไม่ได้ผล (เคสหลักคือ token ของ CLI หมดอายุเพราะไม่ได้ใช้ CLI)
-  for (const id of ['claude', 'grok', 'chatgpt']) {
+  for (const id of ['claude', 'chatgpt']) {
     const cp = config.providers[id];
     if (!cp?.enabled || !cp.liveWeb || out[id]?.data) continue;
     const prev = out[id]?.error; // เช่น API ของ Claude ล้มไปก่อนหน้าในรอบเดียวกัน
@@ -325,8 +325,8 @@ async function runPushUsage() {
     rememberLiveSnapshot(p.id, r.data, r.web ? 'web' : 'api');
     delete p.liveError;
   }
-  // ปักหมุดด้วยมือ (เช่น Grok จากเว็บ) — ใช้เมื่อไม่มีข้อมูลสด "รายสัปดาห์"
-  // (Grok สดอาจได้แค่โควตาแชท — รายสัปดาห์ที่ปักไว้ยังต้องแสดง อย่าให้ 0% ทับ 63% แบบที่เคยพลาด)
+  // ปักหมุดด้วยมือ (เช่น ChatGPT จากเว็บ) — ใช้เมื่อไม่มีข้อมูลสด "รายสัปดาห์"
+  // (เว็บสดอาจได้แค่โควตารอบสั้น — รายสัปดาห์ที่ปักไว้ยังต้องแสดง อย่าให้ 0% ทับ 63% แบบที่เคยพลาด)
   for (const p of data.providers) {
     const m = config.providers[p.id]?.manual;
     // เช็คที่ weekly.liveSource ไม่ใช่ webGauge — webGauge ตั้งโดย applyLiveWeb เท่านั้น
@@ -372,7 +372,7 @@ async function runPushUsage() {
     const web = p.manual || p.webGauge;
     const w = web ? p.weekly : p.session;
     // source บอกที่มาของ "ตัวเลขที่โชว์จริง" — ป้ายบนการ์ดต้องยึดอันนี้
-    // เดิมใช้ธง p.live ของทั้งการ์ด ทำให้ Grok ขึ้น "● สด" ทั้งที่ตัวเลขรายสัปดาห์
+    // เดิมใช้ธง p.live ของทั้งการ์ด ทำให้การ์ดขึ้น "● สด" ทั้งที่ตัวเลขรายสัปดาห์
     // เป็นค่าปักหมุดจากเมื่อสองวันก่อน (ที่สดคือโควตาแชท ซึ่งไม่ใช่ตัวที่โชว์)
     p.headline = {
       window: web ? 'weekly' : 'session',
@@ -471,7 +471,7 @@ function applyLiveWeb(p, live) {
   p.live = true;
   // ให้หน้าปัดหลักโชว์รอบจากเว็บแบบเดียวกับปักหมุด — ยกเว้น Claude ที่เว็บบอกรอบ 5 ชม.
   // มาด้วย การ์ดจึงยึดบล็อก 5 ชม. ต่อได้เหมือนโหมด API ไม่ต้องสลับหน้าปัดไปมา
-  // (Grok/ChatGPT ห้ามทำแบบเดียวกัน — ฝั่งนั้น session คือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
+  // (ChatGPT ห้ามทำแบบเดียวกัน — ฝั่งนั้น session คือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
   p.webGauge = p.id === 'claude' && live.session ? false : !!live.weekly;
 }
 
@@ -545,7 +545,7 @@ const liveRetry = new Map(); // id -> { n, timer }
 
 /**
  * งบลองซ้ำต้องแยกรายเจ้า — ตอนใช้ key รวมของ "ชุดที่กำลังล้ม" เจ้าที่พังค้าง
- * (เช่นเว็บ Grok ที่ endpoint ไม่ทางการ) ทำให้ชุดสลับไปมาจนงบถูกรีเซ็ตแทบทุกรอบ
+ * (เช่นเว็บที่ endpoint ไม่ทางการ) ทำให้ชุดสลับไปมาจนงบถูกรีเซ็ตแทบทุกรอบ
  * แล้วลองซ้ำไม่รู้จบ ส่วนถ้าไม่รีเซ็ตเลย เจ้าที่พังค้างก็กินงบจนเจ้าอื่นไม่ได้ลอง
  * แยกรายเจ้าแล้วจบทั้งสองปัญหา: แต่ละเจ้ามีงบของตัวเอง คืนงบเมื่อกลับมาปกติ
  */
@@ -595,7 +595,7 @@ function checkAlerts(data) {
     const { pct, resetAt, window } = p.headline;
     const rounds = window === 'weekly' ? 'รอบสัปดาห์นี้' : 'บล็อกนี้';
     // ห้ามใช้ resetAt เป็น key — ฝั่งเว็บบางเจ้าบอกเวลารีเซ็ตเป็น "อีกกี่วินาที"
-    // (ดู grokResetAt ใน liveusage.js) ค่าจึงขยับทุกรอบรีเฟรช ถ้าเอามาทำ key
+    // (ดู webResetAt ใน liveusage.js) ค่าจึงขยับทุกรอบรีเฟรช ถ้าเอามาทำ key
     // จะกลายเป็นรอบใหม่ทุกครั้งแล้วเตือนซ้ำไม่หยุด — ใช้ตัว % ตกลงมาเป็นสัญญาณ
     // ว่าขึ้นรอบใหม่แทน เว้นระยะ 5% กันแกว่งไปมาแถวเกณฑ์
     const key = `${p.id}:${window}`;
@@ -781,7 +781,7 @@ ipcMain.handle('calibrate', (_e, { id, sessionPct, weeklyPct }) => {
   return { ok: true, calibration: cal, config };
 });
 
-// โควตาสดจากเว็บ (Grok/ChatGPT) — ล็อกอินในหน้าต่างของแอป (ดู src/webquota.js)
+// โควตาสดจากเว็บ (Claude/ChatGPT) — ล็อกอินในหน้าต่างของแอป (ดู src/webquota.js)
 ipcMain.handle('web-login', async (_e, id) => {
   await webquota.openLogin(id, win);
   pushUsage();
@@ -847,6 +847,25 @@ ipcMain.on('tray-icon', (_e, dataUrl) => {
   } catch { /* ไม่เป็นไร ใช้ไอคอนเดิมต่อ */ }
 });
 
+/**
+ * ผู้ให้บริการที่เลิกรองรับแล้ว (config.load ลบออกจาก config ให้แล้ว) — ล้างของที่ค้างในเครื่อง
+ * session เว็บที่ผู้ใช้เคยล็อกอินไว้ใน partition ของแอปเอง และไฟล์ debug ที่มีข้อความจากหน้าเว็บ
+ * ไม่ปล่อยค้างไว้ทั้งที่แอปไม่ใช้แล้ว ทำครั้งเดียว เพราะบันทึก config ทันทีหลังล้าง
+ */
+function cleanupRetired() {
+  const ids = config.retired || [];
+  if (!ids.length) return;
+  for (const id of ids) {
+    session.fromPartition(`persist:${id}web`).clearStorageData().catch(() => {});
+    for (const f of [`debug-sniff-${id}.txt`, `debug-dom-${id}.txt`, `debug-webquota-${id}.txt`]) {
+      try {
+        fs.unlinkSync(path.join(app.getPath('userData'), f));
+      } catch { /* ไม่มีไฟล์ ไม่เป็นไร */ }
+    }
+  }
+  cfgStore.save(app, config);
+}
+
 /* ---------- เริ่มโปรแกรม ---------- */
 
 const single = app.requestSingleInstanceLock();
@@ -857,9 +876,10 @@ if (!single) {
 
   app.whenReady().then(() => {
     config = cfgStore.load(app);
+    cleanupRetired();
     dropStaleCalibration();
     // endpoint หน้า usage ที่เคยเรียนรู้ไว้ + จำตัวใหม่เมื่อเจอ (ดู src/webquota.js)
-    for (const id of ['claude', 'grok', 'chatgpt']) {
+    for (const id of ['claude', 'chatgpt']) {
       webquota.setDiscovered(id, config.providers[id]?.liveEndpoint || null);
     }
     webquota.setOnDiscover((id, ep) => {

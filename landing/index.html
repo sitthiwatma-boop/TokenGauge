@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TokenGauge — มาตรวัดโควตา AI บน Windows</title>
-<meta name="description" content="เห็นในแวบเดียวว่าโควตา Claude / ChatGPT / Grok เหลือเท่าไหร่ และรีเซ็ตอีกกี่นาที — ฟรี โอเพนซอร์ส ไม่ส่งข้อมูลออกนอกเครื่อง">
+<meta name="description" content="เห็นในแวบเดียวว่าโควตา Claude / ChatGPT / Gemini เหลือเท่าไหร่ และรีเซ็ตอีกกี่นาที — ฟรี โอเพนซอร์ส ไม่ส่งข้อมูลออกนอกเครื่อง">
 <style>
 :root{
   --bg:#0b0e13;--bg-2:#10151d;--panel:#151b25;--panel-2:#1b2331;
   --line:rgba(255,255,255,.07);--line-strong:rgba(255,255,255,.14);
   --text:#e8eef7;--muted:#7c8aa1;--dim:#56637a;--track:#232c3a;
-  --claude:#E8794A;--chatgpt:#19C37D;--grok:#A78BFA;--blue:#2f6fd0;
+  --claude:#E8794A;--chatgpt:#19C37D;--gemini:#4C8DF6;--blue:#2f6fd0;
 }
 *{box-sizing:border-box;margin:0}
 body{
@@ -27,7 +27,7 @@ h1,h2{font-family:'Bahnschrift','Segoe UI Semibold',sans-serif;letter-spacing:-.
 header{padding:70px 0 40px;text-align:center}
 .logo{font-family:'Bahnschrift',sans-serif;font-weight:600;font-size:15px;letter-spacing:.14em;color:var(--muted)}
 h1{font-size:clamp(30px,5.5vw,52px);margin:14px 0 10px}
-h1 b{background:linear-gradient(90deg,var(--claude),var(--chatgpt) 50%,var(--grok));
+h1 b{background:linear-gradient(90deg,var(--claude),var(--chatgpt) 50%,var(--gemini));
   -webkit-background-clip:text;background-clip:text;color:transparent}
 .tag{color:var(--muted);font-size:clamp(14px,2vw,17px);max-width:600px;margin:0 auto 30px}
 .cta{display:inline-flex;gap:12px;flex-wrap:wrap;justify-content:center}
@@ -76,7 +76,7 @@ footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--dim);fon
 <header class="wrap">
   <div class="logo">TOKENGAUGE</div>
   <h1>เหลือโควตา AI เท่าไหร่<br><b>รู้ในแวบเดียว</b></h1>
-  <p class="tag">แผงหน้าปัดบน Windows ที่บอกว่าโควตา Claude Code · Codex CLI · Grok
+  <p class="tag">แผงหน้าปัดบน Windows ที่บอกว่าโควตา Claude Code · Codex CLI · Gemini CLI
   ใช้ไปกี่ % และรีเซ็ตอีกกี่นาที — ไม่ต้องเปิดเว็บเช็คทีละเจ้าอีกต่อไป</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/sitthiwatma-boop/TokenGauge/releases/latest">⬇ ดาวน์โหลดฟรี (Windows)</a>
@@ -100,12 +100,12 @@ footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--dim);fon
       <div class="pct">20<small>บล็อก 5 ชั่วโมง</small></div>
       <div class="foot">รีเซ็ตอีก 4h 12m</div>
     </div>
-    <div class="card" style="--a:var(--grok)">
-      <div class="n">🛸 Grok</div>
+    <div class="card" style="--a:var(--gemini)">
+      <div class="n">💧 Gemini</div>
       <svg viewBox="0 0 186 118"><path class="arcbg" d="M27.2 115.9 A70 70 0 1 1 158.8 115.9"/>
         <path class="arcfg" d="M27.2 115.9 A70 70 0 1 1 158.8 115.9" stroke-dasharray="268.6" stroke-dashoffset="99.4"/></svg>
-      <div class="pct">63<small>รายสัปดาห์</small></div>
-      <div class="foot">รีเซ็ตอีก 87h 06m</div>
+      <div class="pct">63<small>บล็อก 5 ชั่วโมง</small></div>
+      <div class="foot">รีเซ็ตอีก 1h 06m</div>
     </div>
   </div>
 </header>
@@ -115,7 +115,7 @@ footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--dim);fon
   <div class="grid3">
     <div class="f"><div class="ic">🎯</div><h3>% ทางการ ไม่ใช่แค่ค่าเดา</h3>
       <p>Claude ดึงตรงจาก API เดียวกับคำสั่ง /usage · ChatGPT อ่านจากตัวเลขที่ Codex จดไว้เอง
-      · Grok ปักหมุดจากหน้าเว็บครั้งเดียวแล้วนับถอยหลังให้</p></div>
+      · Gemini อ่านจากประวัติแชตของ Gemini CLI ในเครื่อง</p></div>
     <div class="f"><div class="ic">🖥️</div><h3>วิดเจ็ตมุมจอ</h3>
       <p>ย่อเป็นแถบเล็กลอยมุมขวาล่าง เห็นวงแหวน % ทั้งสามเจ้าตลอดเวลา
       ปรับความจางได้ ลากวางตรงไหนก็จำไว้</p></div>

@@ -179,7 +179,7 @@ function applyStale(p, snap) {
   // การ์ดที่เคยยึดรายสัปดาห์จากเว็บต้องยึดต่อ ไม่งั้นหน้าปัดสลับไปโชว์บล็อก 5 ชม.
   // ตอนเว็บล้ม แล้วตัวเลขบนหน้าปัดกระโดดทั้งที่ผู้ใช้ไม่ได้ทำอะไร
   // เงื่อนไขต้องตรงกับ applyLiveWeb ใน main.js เป๊ะ ๆ (Claude ยึดบล็อก 5 ชม. ถ้ามีค่ารอบสั้น
-  // ส่วน Grok/ChatGPT ยึดรายสัปดาห์เสมอ เพราะ session ของฝั่งนั้นคือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
+  // ส่วน ChatGPT ยึดรายสัปดาห์เสมอ เพราะ session ของฝั่งนั้นคือโควตาแชท ไม่ใช่ตัวที่บีบจริง)
   if (snap.source === 'web') p.webGauge = p.id === 'claude' && snap.session ? false : !!snap.weekly;
   return p;
 }
@@ -406,14 +406,14 @@ async function fetchCodexApiLive() {
   }
 }
 
-/* ---------- Grok (grok.com) — ตัวแปลงคำตอบ /rest/rate-limits ----------
- * ส่วนยิงเน็ตอยู่ใน src/grokweb.js (ต้องใช้ Electron session) — แยกตัวแปลงมาไว้ที่นี่
+/* ---------- ตัวแปลงคำตอบโควตาจากเว็บ (claude.ai / chatgpt.com) ----------
+ * ส่วนยิงเน็ตอยู่ใน src/webquota.js (ต้องใช้ Electron session) — แยกตัวแปลงมาไว้ที่นี่
  * เป็นฟังก์ชันล้วนเพื่อเทสต์ได้ด้วย node เปล่า ๆ
  * โครงคำตอบไม่ทางการและเปลี่ยนได้ จึงเดินหา object ที่มีคู่ remaining/total แบบยืดหยุ่น
  * (แนวเดียวกับ findUsage ใน usage.js)
  */
 /** หาเวลารีเซ็ตจาก key ที่หน้าตาเหมือน reset/renew/expire — รับได้ทั้ง ISO, epoch วินาที/ms, วินาทีนับจากนี้ */
-function grokResetAt(o, now) {
+function webResetAt(o, now) {
   for (const [k, v] of Object.entries(o)) {
     if (!/reset|renew|expire/i.test(k)) continue;
     if (typeof v === 'string') {
@@ -448,7 +448,7 @@ function hintSec(key) {
   return 0;
 }
 
-function grokWindow(o, now, keyHint = 0) {
+function webWindow(o, now, keyHint = 0) {
   const winSec =
     Number(o.windowSizeSeconds ?? o.window_size_seconds) ||
     (Number(o.window_minutes ?? o.windowMinutes) || 0) * 60 ||
@@ -462,7 +462,7 @@ function grokWindow(o, now, keyHint = 0) {
     if (pct != null) {
       return {
         pct: Math.max(0, Math.min(999, pct)),
-        resetAt: grokResetAt(o, now),
+        resetAt: webResetAt(o, now),
         winSec
       };
     }
@@ -475,19 +475,19 @@ function grokWindow(o, now, keyHint = 0) {
     if (isFinite(raw) && raw >= 0 && raw <= 100) {
       // คีย์แบบ "remaining/left" คือ % ที่เหลือ ต้องกลับด้านเป็น % ที่ใช้ไป
       const pct = /remaining|left/i.test(k) ? 100 - raw : raw;
-      return { pct, resetAt: grokResetAt(o, now), winSec };
+      return { pct, resetAt: webResetAt(o, now), winSec };
     }
   }
   return null;
 }
 
 /** คืน { session, weekly } หรือ null ถ้าไม่พบหน้าต่างโควตาที่อ่านออกเลย */
-function parseGrokRateLimits(json, now = Date.now()) {
+function parseWebRateLimits(json, now = Date.now()) {
   if (!json || typeof json !== 'object') return null;
   const wins = [];
   const walk = (o, depth, key) => {
     if (!o || typeof o !== 'object' || depth > 3) return;
-    const w = grokWindow(o, now, hintSec(key));
+    const w = webWindow(o, now, hintSec(key));
     if (w) return void wins.push(w);
     for (const [k, v] of Object.entries(o)) walk(v, depth + 1, k);
   };
@@ -503,13 +503,13 @@ function parseGrokRateLimits(json, now = Date.now()) {
   return out;
 }
 
-/** อ่านคำตอบที่อาจไม่ใช่ JSON ตรง ๆ — หน้า Usage ของ grok.com ส่งข้อมูลแบบ
+/** อ่านคำตอบที่อาจไม่ใช่ JSON ตรง ๆ — หน้าเว็บแบบ Next.js บางหน้าส่งข้อมูลแบบ
  *  React Server Components (ข้อความยาวที่มี JSON ฝังเป็นท่อน ๆ บางทีถูก escape)
  *  จึงดึง object แบน ๆ ที่มีคีย์เปอร์เซ็นต์/remaining ออกมาลองแปลงทีละตัว */
-function parseGrokText(text, now = Date.now()) {
+function parseWebText(text, now = Date.now()) {
   if (!text) return null;
   try {
-    return parseGrokRateLimits(JSON.parse(text), now);
+    return parseWebRateLimits(JSON.parse(text), now);
   } catch { /* ไม่ใช่ JSON เดี่ยว — ขุดจากข้อความต่อ */ }
   const out = { session: null, weekly: null };
   let found = false;
@@ -525,7 +525,7 @@ function parseGrokText(text, now = Date.now()) {
         continue;
       }
     }
-    const d = parseGrokRateLimits(obj, now);
+    const d = parseWebRateLimits(obj, now);
     if (!d) continue;
     found = true;
     for (const k of ['session', 'weekly']) {
@@ -535,69 +535,12 @@ function parseGrokText(text, now = Date.now()) {
   return found ? out : null;
 }
 
-/**
- * อ่านโควตาจาก "ข้อความที่แสดงบนหน้า usage" — ทางสุดท้ายเมื่อ endpoint อ่านไม่ได้
- *
- * grok.com ย้ายหน้า Usage ไปใช้ gRPC-web + protobuf แล้ว (8 ส.ค. 2026) คำขอเป็นไบนารี
- * ที่ replay ไม่ได้และไม่มี schema จะถอด เหลือทางเดียวคืออ่านตัวเลขที่ผู้ใช้เห็นบนจอ
- * (ฝั่งเปิดหน้าต่างอยู่ใน src/webquota.js — แยกตัวแปลงมาไว้ที่นี่ให้เทสต์ได้ด้วย node เปล่า)
- *
- * รูปแบบที่รองรับ: "70% used" คู่กับ "Resets August 9, 2026 at 2:52 PM"
- * เวลาที่หน้าเว็บแสดงเป็นเวลาท้องถิ่นของเครื่องอยู่แล้ว Date.parse จึงตรงกับที่ผู้ใช้เห็น
- */
-const PAGE_SPLIT = '@@SPLIT@@'; // ฝั่ง webquota ส่ง innerText กับ textContent มาในก้อนเดียว
-
-function parseUsagePage(text, now = Date.now()) {
-  if (!text) return null;
-  // ลองทีละก้อน — ห้ามแกะรวมกัน ไม่งั้นรายการย่อยจะถูกนับสองรอบตอนบวกผลรวม
-  for (const chunk of String(text).split(PAGE_SPLIT)) {
-    const r = parseUsageChunk(chunk, now);
-    if (r) return r;
-  }
-  return null;
-}
-
-function parseUsageChunk(s, now) {
-  if (!s) return null;
-  let pct = null;
-  // ยอมให้ไม่มีช่องว่างคั่น เพราะ textContent เชื่อม element ติดกันหมด ("70%used")
-  const m = s.match(/(\d+(?:\.\d+)?)\s*%\s*used/i);
-  if (m) {
-    pct = parseFloat(m[1]);
-  } else {
-    /* ตัวเลขรวมของ grok.com วาดด้วย CSS pseudo-element — ไม่มีใน DOM เลยทั้ง innerText
-     * และ textContent (ยืนยันแล้ว 8 ส.ค. 2026: ได้มาแต่ "Weekly SuperGrok Limitused")
-     * แต่รายการย่อยเป็นข้อความจริง และผลรวมของมันคือเลขเดียวกับที่หน้าเว็บโชว์
-     * ("Imagine 69%" + "Chat 1%" = 70%) — บวกเองจึงตรงกับที่ผู้ใช้เห็น */
-    const i = s.search(/Weekly/i);
-    if (i < 0) return null;
-    const j = s.search(/Extra Usage Credits/i);
-    const zone = s.slice(i, j > i ? j : i + 600);
-    const parts = zone.match(/\d+(?:\.\d+)?\s*%/g);
-    if (!parts || !parts.length) return null;
-    pct = parts.reduce((a, p) => a + parseFloat(p), 0);
-    // เกิน 100 = อ่านโซนผิด (หน้าเว็บไม่เคยโชว์เกิน 100%) — ไม่เดาดีกว่าเดาผิด
-    if (pct > 100) return null;
-  }
-  if (!isFinite(pct)) return null;
-  const r = s.match(/Resets?\s+(?:on\s+)?([A-Za-z]+\s+\d{1,2},\s*\d{4}(?:\s+at)?\s+\d{1,2}:\d{2}(?:\s*[AaPp][Mm])?)/);
-  let resetAt = null;
-  if (r) {
-    const t = Date.parse(r[1].replace(/\s+at\s+/i, ' '));
-    // รอบที่ผ่านไปแล้วห้ามเอามาใช้ (หน้าเว็บอาจค้างค่าเก่าอยู่) — ปล่อยเป็น null
-    // ให้ applyLiveWeb ยืมเวลารีเซ็ตจากค่าปักหมุดแทน
-    if (isFinite(t) && t > now) resetAt = t;
-  }
-  return { session: null, weekly: { pct: Math.max(0, Math.min(999, pct)), resetAt } };
-}
-
 module.exports = {
   fetchLive,
   fetchCodexLive,
   fetchCodexApiLive,
-  parseGrokRateLimits,
-  parseGrokText,
-  parseUsagePage,
+  parseWebRateLimits,
+  parseWebText,
   usableSnapshot,
   applyStale
 };

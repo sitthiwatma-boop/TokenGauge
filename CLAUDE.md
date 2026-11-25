@@ -8,7 +8,7 @@
 ## โปรเจกต์นี้คืออะไร
 
 **TokenGauge** — แอปเดสก์ท็อป Electron บน Windows แสดงโควตาการใช้งาน AI แบบเรียลไทม์
-สำหรับ Claude Code, ChatGPT (Codex CLI) และ Grok CLI
+สำหรับ Claude Code, ChatGPT (Codex CLI) และ Gemini CLI
 
 ผู้ใช้เป็นครูไทยที่เขียนโค้ดด้วย AI ทั้งวัน ต้องการรู้ในแวบเดียวว่า
 "เหลือโควตาเท่าไหร่ และรีเซ็ตอีกกี่นาที" โดยไม่ต้องเปิดเว็บไปดู
@@ -21,31 +21,33 @@
 
 1. **ห้ามอ่านไฟล์ credential หรือ token ใด ๆ** เช่น `.credentials.json`, `auth.json`,
    Windows Credential Manager — แอปนี้อ่านเฉพาะไฟล์ `.jsonl` ที่บันทึกจำนวน token เท่านั้น
+   (ยกเว้นประวัติแชตของ Gemini CLI `~/.gemini/tmp/**/session-*.json` ซึ่งเป็น log ไม่ใช่
+   credential — root ต้องอยู่ที่ `~/.gemini/tmp` เท่านั้น ห้ามขยายขึ้นไป `~/.gemini`
+   เพราะในนั้นมี `oauth_creds.json`)
    นี่คือจุดขายด้านความปลอดภัยของแอป อย่าเพิ่มฟีเจอร์ที่ทำลายข้อนี้
 2. **ห้ามส่งข้อมูลออกนอกเครื่อง** ไม่มี telemetry ไม่มี analytics ไม่มี cloud sync
    ถ้าจะเพิ่มฟีเจอร์ที่ต้องต่อเน็ต ต้องถามผู้ใช้ก่อนเสมอ
 
    > **ข้อยกเว้นที่ผู้ใช้อนุมัติแล้ว (ส.ค. 2026) มี 2 อย่างเท่านั้น:**
    >
-   > 1) live usage — opt-in ทุกตัว (ปิดเป็นค่าเริ่มต้น) ครอบคลุม 3 เจ้า:
+   > 1) live usage — opt-in ทุกตัว (ปิดเป็นค่าเริ่มต้น) ครอบคลุม 2 เจ้า:
    > Claude อ่าน `accessToken` จาก `~/.claude/.credentials.json` → `api.anthropic.com/api/oauth/usage`
    > และ ChatGPT อ่าน `tokens.access_token` จาก `~/.codex/auth.json` → `chatgpt.com/backend-api/*`
    > (ทดลอง — endpoint ไม่ทางการ) ทั้งสองอยู่ใน `src/liveusage.js`
-   > ส่วนโหมด `liveWeb` (`src/webquota.js`) ใช้ได้กับทั้งสามเจ้า — Grok, ChatGPT และ
+   > ส่วนโหมด `liveWeb` (`src/webquota.js`) ใช้ได้กับ ChatGPT และ
    > **Claude (ผู้ใช้อนุมัติเพิ่ม 7 ส.ค. 2026** เพราะ token ของ CLI หมดอายุเมื่อไม่ได้ใช้ CLI
    > คนที่ทำงานฝั่งเว็บเป็นหลักจึงไม่มีทางได้ % สดเลย — เป็นทางสำรองของ API ทางการ
    > `collectLive` ถาม API ก่อนเสมอ แล้วมาทางเว็บเมื่อไม่ได้ผล**) ใช้ session ที่ผู้ใช้
    > ล็อกอินเว็บ**ในหน้าต่างของแอปเอง**
-   > (partition `persist:claudeweb` / `persist:grokweb` / `persist:chatgptweb`)
+   > (partition `persist:claudeweb` / `persist:chatgptweb`)
    > แอปเรียนรู้ endpoint จาก network ของหน้าต่างล็อกอินเฉพาะโดเมนเจ้านั้น แล้ว replay เอง
    > (ทดลอง — endpoint ไม่ทางการ) **ห้ามแตะ cookie ของเบราว์เซอร์ภายนอกเด็ดขาด**
    > แต่ละ credential ส่งหาเซิร์ฟเวอร์ของเจ้าของมันเท่านั้น ห้าม log/เก็บ/ส่งไปที่อื่นเด็ดขาด
    >
-   > **Grok เพิ่มทางอ่านจากหน้าเว็บโดยตรง (ผู้ใช้อนุมัติ 8 ส.ค. 2026)** — grok.com ย้าย
-   > หน้า Usage ไป gRPC-web + protobuf แล้ว วิธี replay endpoint จึงใช้ไม่ได้อีก
-   > แอปเปิด `grok.com/?_s=usage` ใน BrowserWindow ที่ซ่อนไว้ (session เดียวกับที่ล็อกอิน)
-   > แล้วอ่าน `document.body.innerText` อย่างเดียว — ไม่แตะ cookie/localStorage
-   > ไม่ส่งอะไรออกจากหน้านั้น แคช 10 นาที ปิดหน้าต่างทิ้งทุกครั้ง (ดู `readDom` ใน webquota.js)
+   > **Grok เลิกรองรับแล้ว (25 พ.ย. 2026 ผู้ใช้ขอให้แทนด้วย Gemini)** — ข้อยกเว้นของ Grok
+   > ทั้ง `persist:grokweb` และการอ่านหน้า usage จาก DOM ในหน้าต่างซ่อน (`readDom`)
+   > ถูกถอดออกพร้อมโค้ดแล้ว ห้ามนำกลับมาโดยไม่ถามผู้ใช้ใหม่ การ์ด Gemini อ่านจาก log
+   > ในเครื่องล้วน ไม่ต่อเน็ต และไม่มีข้อยกเว้นใด ๆ
    >
    > 2) `autoUpdate` — เช็คเวอร์ชันใหม่จาก GitHub Releases ของโปรเจกต์นี้เอง
    > ทำงานเฉพาะตัวที่แพ็กเป็น .exe แล้ว ปิดได้ด้วย `autoUpdate: false` ใน config
@@ -70,17 +72,13 @@ src/usage.js     หัวใจ — เดินหาไฟล์ .jsonl, แ�
 src/liveusage.js % ทางการ 2 ทาง: Claude ผ่าน API (opt-in, ดูข้อยกเว้นในกฎข้อ 2)
                  และ ChatGPT จาก rate_limits ใน log ของ Codex เอง (ในเครื่องล้วน ไม่ต่อเน็ต
                  อ่านเฉพาะท้ายไฟล์เพราะ session log ใหญ่ได้หลายร้อย MB)
-                 + ตัวแปลงคำตอบเว็บ parseGrokText/parseGrokRateLimits (ฟังก์ชันล้วน เทสต์ได้ด้วย node
+                 + ตัวแปลงคำตอบเว็บ parseWebText/parseWebRateLimits (ฟังก์ชันล้วน เทสต์ได้ด้วย node
                  อ่านได้ทั้ง JSON, payload แบบ RSC และ rate_limits แบบ ChatGPT)
-                 + parseUsagePage — แปลง "ข้อความบนหน้า usage" ("70% used" + "Resets ...")
-                 เป็น { weekly } ใช้คู่กับ readDom ใน webquota.js
                  + usableSnapshot/applyStale — ค่าสดล่าสุดที่ยังอ้างอิงได้ตอนดึงสดล้ม
-src/webquota.js  % สดจากเว็บของ Claude/Grok/ChatGPT (opt-in) — ล็อกอินในหน้าต่างของแอปเอง
+src/webquota.js  % สดจากเว็บของ Claude/ChatGPT (opt-in) — ล็อกอินในหน้าต่างของแอปเอง
                  cookie อยู่ใน partition ของแอปเท่านั้น ไม่แตะเบราว์เซอร์ภายนอก
                  เรียนรู้ endpoint จากหน้า usage ที่ผู้ใช้เปิดในหน้าต่างล็อกอิน แล้ว replay เอง
                  (เก็บใน providers.<id>.liveEndpoint)
-                 + `readDom`/`fetchDomUsage` — ทางสุดท้ายสำหรับเจ้าที่ endpoint อ่านไม่ได้
-                 (Grok) เปิดหน้า usage ในหน้าต่างซ่อน อ่านข้อความบนจอ แคช 10 นาที
                  + ตอนเปิดหน้าต่างล็อกอินจะเขียน debug-sniff-<id>.txt ไว้ให้ไล่ดูว่าตัวเรียนรู้
                  เห็นคำขออะไรบ้าง แต่ละอันแกะได้/ไม่ได้ (ค่าที่เหมือน token ถูกปิดบัง)
 src/history.js   เก็บสรุปรายชั่วโมงลง history.json ใน userData 90 วัน
@@ -134,10 +132,22 @@ renderer ไม่เคยอ่านไฟล์เอง และ main ไ�
 **บล็อก 5 ชั่วโมง** — เริ่มนับที่ต้นชั่วโมงของข้อความแรก แล้วยาว 5 ชั่วโมง
 ถ้าเว้นว่างเกิน 5 ชั่วโมงถือว่าขึ้นบล็อกใหม่ (เลียนแบบวิธีของ ccusage)
 
-**aggregation สองแบบ** — ต่างกันตรงนี้เท่านั้น อย่าสับสน
+**aggregation สามแบบ** — ต่างกันตรงนี้เท่านั้น อย่าสับสน
 - `'sum'` = แต่ละบรรทัดคือยอดใช้ครั้งนั้น ให้บวกสะสม (Claude Code)
 - `'cumulative-max'` = ตัวเลขในไฟล์เป็นยอดสะสมของ session ให้เอาค่าสูงสุดต่อไฟล์ (Codex CLI)
   ถ้าบวกสะสมแบบแรกจะได้ตัวเลขพองเกินจริงหลายเท่า
+- `'gemini'` = ไฟล์ `session-*.json` ของ Gemini CLI (`parseGeminiText`) — รุ่นเก่าเป็น JSON
+  ก้อนเดียว `{ sessionId, messages: [...] }` เขียนทับทั้งไฟล์ทุกเทิร์น รุ่นใหม่อาจเป็น JSONL
+  จึงลองก้อนเดียวก่อนแล้วค่อยไล่ทีละบรรทัด นับเฉพาะข้อความ `type: 'gemini'` ที่มี `tokens`
+  **กับดัก: `tokens.cached` เป็นส่วนหนึ่งของ `tokens.input` อยู่แล้ว** ต้องหักออกก่อน
+  (`input - cached` → input, `cached` → cacheRead) ไม่งั้นแคชถูกนับสองรอบ `thoughts` รวมเข้า output
+  กันนับซ้ำข้ามไฟล์ด้วย `dk = sessionId:messageId` เพราะ `/compress` เขียนไฟล์ใหม่ที่ใช้
+  sessionId เดิม — `filePattern()` จำกัดชื่อไฟล์เป็น `session-*` ไม่งั้นจะหยิบ `logs.json`
+  หรือ checkpoint ใน tmp มาด้วย Gemini ไม่บันทึก % โควตาในไฟล์ การ์ดจึงเป็นค่าประมาณเสมอ
+
+**เลิกรองรับผู้ให้บริการ** — `RETIRED_PROVIDERS` ใน config.js ลบ `providers.<id>` ออกตอนโหลด
+(ไม่งั้น deepMerge เอากลับมาจาก config.json เดิม การ์ดเก่าโผล่อีก) แล้ว `cleanupRetired()`
+ใน main ล้าง partition `persist:<id>web` กับไฟล์ debug ของเจ้านั้นทิ้งครั้งเดียว
 
 **aggregation เลือก key ที่อ่านด้วย** (`PRIORITY_SUM` / `PRIORITY_CUMULATIVE`)
 Codex เขียนทั้ง `total_token_usage` (สะสมทั้ง session) และ `last_token_usage` (เทิร์นล่าสุด)
@@ -198,7 +208,7 @@ Codex เขียนทั้ง `total_token_usage` (สะสมทั้ง 
 
 ธีมมืดแบบแผงหน้าปัดเครื่องวัด สิ่งที่เป็นเอกลักษณ์คือ **หน้าปัดโค้ง 220 องศาพร้อมขีดสเกล**
 และ **มาสคอต SVG ประจำแต่ละ AI** (Claude = ประกายดาวส้ม, ChatGPT = ต้นกล้าเขียว,
-Grok = ยูเอฟโอม่วง) วาดใน `mascotSvg()` ของ app.js ล้วน ๆ ไม่มีไฟล์ภาพ
+Gemini = หยดน้ำฟ้ามีประกายดาวเล็กข้างตัว) วาดใน `mascotSvg()` ของ app.js ล้วน ๆ ไม่มีไฟล์ภาพ
 หน้าตามาสคอตเปลี่ยนตามการใช้: ยิ้ม → ปากเบะที่ 70% → ร้องไห้+เหงื่อตกที่ 90% → หลับเมื่อไม่มีข้อมูล
 
 - การ์ด 3 ใบเรียงแถวเดียวเสมอ (`repeat(3, minmax(0,1fr))`) อย่าให้ตกบรรทัด
@@ -256,7 +266,7 @@ mock ของ `window.api` อยู่ที่ `scripts/demo-mock.js` (ส่
   ไม่ใช่ `p.webGauge` เพราะ `webGauge` ตั้งโดย `applyLiveWeb` เท่านั้น ทาง rate_limits
   ของ Codex (ผ่าน `applyLive`) จึงหลุด guard แล้วโดนค่าปักหมุดเก่าทับ % ทางการทิ้งเงียบ ๆ
 - **`checkAlerts` ห้ามใช้ `resetAt` เป็น key** — ฝั่งเว็บบางเจ้าบอกเวลารีเซ็ตเป็น
-  "อีกกี่วินาที" (ดู `grokResetAt`) ค่าจึงขยับทุกรอบ ถ้าเอามาทำ key จะกลายเป็นรอบใหม่
+  "อีกกี่วินาที" (ดู `webResetAt`) ค่าจึงขยับทุกรอบ ถ้าเอามาทำ key จะกลายเป็นรอบใหม่
   ทุกครั้งแล้วเตือนซ้ำไม่หยุด ใช้ `id:window` แล้วดู % ตกลงมาเป็นสัญญาณขึ้นรอบใหม่แทน
 - **งบ `scheduleLiveRetry` ต้องแยกรายเจ้า** — ตอนใช้ key รวมของ "ชุดที่กำลังล้ม"
   เจ้าที่พังค้างทำให้ชุดสลับไปมาจนงบรีเซ็ตแทบทุกรอบ แล้วลองซ้ำไม่รู้จบ
@@ -270,12 +280,6 @@ mock ของ `window.api` อยู่ที่ `scripts/demo-mock.js` (ส่
   ดิ่งจาก 29% เหลือ 0% เพราะโควตาที่ใช้จากเว็บไม่ทิ้ง log ในเครื่องเลย — ตอนนี้มี
   `liveSnapshot` รับไว้เป็นพื้น แต่ต้นเหตุยังอยู่: ค่าประมาณจาก log จะต่ำกว่าจริงเสมอ
   สำหรับคนที่ใช้เว็บเป็นหลัก อย่าไปแก้ที่ตัวเลขประมาณ ให้ดูที่ % ทางการเป็นหลัก
-- **หน้า Usage ของ grok.com อ่านได้ทางเดียวคือจาก DOM** — endpoint เป็น gRPC-web
-  (protobuf) replay ไม่ได้ และตัวเลขรวม ("70% used") ถูกวาดด้วย CSS pseudo-element
-  จึงไม่มีใน DOM เลยทั้ง `innerText` และ `textContent` (ได้มาแต่ `Weekly SuperGrok Limitused`)
-  `parseUsagePage` จึง**บวกรายการย่อย** ("Imagine 69%" + "Chat 1%" = 70%) ซึ่งตรงกับที่
-  หน้าเว็บโชว์ อย่าเปลี่ยนกลับไปหวังพึ่งตัวเลขรวม และอย่าลืมว่า `?_s=usage` เปิดกล่อง
-  ตั้งค่าค้างไว้ที่หน้าแรก ต้องกดเมนู "Usage" เองก่อนเนื้อหาถึงจะ render
 - **"เปิดพร้อม Windows" ต้องลงทะเบียนเฉพาะตัวที่แพ็กแล้ว** (`app.isPackaged`) —
   ตอนรันจากซอร์ส `setLoginItemSettings` จะชี้ไปที่ `electron.exe` เปล่า ๆ ใน node_modules
   ทำให้ Windows เปิดหน้า welcome ของ Electron ทุกครั้งที่ล็อกอิน (เคยเกิดแล้ว)

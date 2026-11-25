@@ -231,20 +231,12 @@ body.mini .tabs, body.mini #history { display: none !important; }
 .mascot .sweat { fill: #7cc4ff; }
 .mascot .leaf { fill: color-mix(in srgb, var(--accent) 55%, #fff); }
 .mascot .leaf.l2 { fill: color-mix(in srgb, var(--accent) 80%, #063b26); }
-.mascot .saucer {
-  fill: color-mix(in srgb, var(--accent) 38%, var(--panel));
-  stroke: color-mix(in srgb, var(--accent) 60%, transparent); stroke-width: 1;
-}
-.mascot .ant { stroke: color-mix(in srgb, var(--accent) 70%, #fff); stroke-width: 1.2; stroke-linecap: round; }
-.mascot .ant-tip { fill: #ffd66b; animation: glowtip 2.2s ease-in-out infinite; }
-.mascot .lamp { fill: #fff; opacity: 0.85; animation: twinkle 1.6s infinite; }
-.mascot .lamp.l2 { animation-delay: 0.5s; }
-.mascot .lamp.l3 { animation-delay: 1s; }
+.mascot .shine { stroke: #fff; stroke-width: 1.6; stroke-linecap: round; fill: none; opacity: 0.45; }
+.mascot .twin { fill: color-mix(in srgb, var(--accent) 45%, #fff); animation: twinkle 2.4s ease-in-out infinite; }
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.5px); } }
 @keyframes shiver { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-1px); } 75% { transform: translateX(1px); } }
 @keyframes blink { 0%, 91%, 100% { transform: scaleY(1); } 94%, 96% { transform: scaleY(0.12); } }
 @keyframes twinkle { 0%, 100% { opacity: 0.85; } 50% { opacity: 0.25; } }
-@keyframes glowtip { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 .pill {
   margin-left: auto;
   font-family: var(--font-mono);
