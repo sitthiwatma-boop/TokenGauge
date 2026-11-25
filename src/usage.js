@@ -8,6 +8,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { StringDecoder } = require('string_decoder');
 
 const BLOCK_MS = 5 * 60 * 60 * 1000; // บล็อก 5 ชั่วโมง
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -180,7 +181,59 @@ function walkJsonl(root, out = [], depth = 0, re = /\.jsonl$/i) {
 
 /* ---------- แคชผลอ่านไฟล์ อ่านซ้ำเฉพาะไฟล์ที่เปลี่ยน ---------- */
 
-const fileCache = new Map(); // path -> { mtimeMs, size, events }
+/**
+ * key = `${aggregation}|${path}` → สถานะการอ่านไฟล์นั้น
+ * { mtimeMs, size, offset, carry, skipping, seen, best, events, gemini? }
+ *
+ * ห้ามกลับไปใช้ readFileSync ทั้งไฟล์ — log ของ Codex ไฟล์เดียวโตได้ถึง 1.7 GB
+ * (เจอจริง 25 พ.ย. 2026) อ่านทั้งก้อนแล้วหน่วยความจำของ Electron เต็ม แอปตายแบบ native
+ * ภายในไม่กี่วินาทีหลังเปิด โดยไม่มี error ให้เห็นเลย (exit -36861) จึงอ่านทีละท่อน
+ * และไฟล์ .jsonl เขียนต่อท้ายอย่างเดียว พอไฟล์โตขึ้นก็อ่านต่อจาก offset เดิม
+ * ไฟล์ใหญ่จึงเสียเวลาอ่านเต็มแค่ครั้งแรกครั้งเดียว
+ */
+const fileCache = new Map();
+
+const CHUNK = 4 * 1024 * 1024;
+// บรรทัดที่ยาวเกินนี้คือผลลัพธ์ของเครื่องมือ (ไฟล์ทั้งไฟล์, ภาพ base64) ไม่ใช่บรรทัด usage
+// ทิ้งไปเลย ไม่งั้นสตริงก้อนเดียวอาจใหญ่หลายร้อย MB
+const MAX_LINE = 16 * 1024 * 1024;
+// Gemini เก็บทั้ง session เป็น JSON ก้อนเดียว — ใหญ่เกินนี้ถือว่าผิดปกติ ไล่ทีละบรรทัดแทน
+const GEMINI_WHOLE_MAX = 64 * 1024 * 1024;
+
+/** อ่านไฟล์ตั้งแต่ตำแหน่ง from ทีละท่อน ส่งบรรทัดที่ครบแล้วให้ onLine คืน { offset, carry, skipping } */
+function readLines(file, from, carry, skipping, onLine) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const decoder = new StringDecoder('utf8');
+    const buf = Buffer.allocUnsafe(CHUNK);
+    let pos = from;
+    for (;;) {
+      const n = fs.readSync(fd, buf, 0, CHUNK, pos);
+      if (n <= 0) break;
+      pos += n;
+      const text = decoder.write(buf.subarray(0, n));
+      let start = 0;
+      for (;;) {
+        const nl = text.indexOf('\n', start);
+        if (nl < 0) break;
+        if (!skipping && carry.length + (nl - start) <= MAX_LINE) onLine(carry + text.slice(start, nl));
+        carry = '';
+        skipping = false;
+        start = nl + 1;
+      }
+      if (!skipping) {
+        carry += text.slice(start);
+        if (carry.length > MAX_LINE) {
+          carry = '';
+          skipping = true;
+        }
+      }
+    }
+    return { offset: pos, carry, skipping };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 function parseFile(file, provider) {
   let st;
@@ -195,56 +248,98 @@ function parseFile(file, provider) {
   const cached = fileCache.get(key);
   if (cached && cached.mtimeMs === st.mtimeMs && cached.size === st.size) return cached.events;
 
-  let text = '';
-  try {
-    text = fs.readFileSync(file, 'utf8');
-  } catch {
-    return [];
-  }
-
   if (provider.aggregation === 'gemini') {
+    // ไฟล์ของ Gemini ถูกเขียนทับทั้งไฟล์ทุกเทิร์น อ่านต่อจาก offset ไม่ได้ ต้องอ่านใหม่ทั้งไฟล์
+    let text = '';
+    try {
+      if (st.size <= GEMINI_WHOLE_MAX) {
+        text = fs.readFileSync(file, 'utf8');
+      } else {
+        const lines = [];
+        readLines(file, 0, '', false, (l) => {
+          if (l.includes('"tokens"')) lines.push(l);
+        });
+        text = lines.join('\n');
+      }
+    } catch {
+      return [];
+    }
     const events = parseGeminiText(text, st.mtimeMs);
     fileCache.set(key, { mtimeMs: st.mtimeMs, size: st.size, events });
     return events;
   }
 
-  const events = [];
-  const seen = new Set();
-  let best = null; // สำหรับโหมด cumulative-max
+  // ไฟล์โตขึ้นจากเดิม = มีบรรทัดใหม่ต่อท้าย → อ่านต่อจากเดิม, เล็กลง = ถูกเขียนใหม่ → เริ่มใหม่
+  const resume = cached && cached.offset != null && st.size > cached.offset;
+  const state = resume
+    ? cached
+    : { offset: 0, carry: '', skipping: false, seen: new Set(), best: null, sumEvents: [] };
 
-  for (const line of text.split('\n')) {
+  const onLine = (line) => {
+    // คัดก่อน parse — บรรทัดส่วนใหญ่ของ log คือข้อความ/ผลของเครื่องมือ ไม่มี usage
+    // ทุกรูปแบบที่ readUsageShape อ่านได้มีคำว่า token อยู่ในชื่อ key ทั้งนั้น
+    if (line.indexOf('oken') < 0) return;
     const s = line.trim();
-    if (!s || s[0] !== '{') continue;
+    if (!s || s[0] !== '{') return;
     let obj;
     try {
       obj = JSON.parse(s);
     } catch {
-      continue;
+      return;
     }
     const u = findUsage(obj, 0, cumulative ? PRIORITY_CUMULATIVE : PRIORITY_SUM);
-    if (!u) continue;
+    if (!u) return;
     const ts = findTimestamp(obj, st.mtimeMs);
     const total = u.input + u.output + u.cacheCreate + u.cacheRead;
-    if (total <= 0) continue;
+    if (total <= 0) return;
 
     if (cumulative) {
-      if (!best || total > best.total) best = { ...u, ts, total };
-      continue;
+      if (!state.best || total > state.best.total) state.best = { ...u, ts, total };
+      return;
     }
-    const key = findDedupeKey(obj);
-    if (key) {
-      if (seen.has(key)) continue;
-      seen.add(key);
+    const dk = findDedupeKey(obj);
+    if (dk) {
+      if (state.seen.has(dk)) return;
+      state.seen.add(dk);
     }
-    events.push({ ts, ...u });
+    state.sumEvents.push({ ts, ...u });
+  };
+
+  try {
+    const r = readLines(file, state.offset, state.carry, state.skipping, onLine);
+    state.offset = r.offset;
+    state.carry = r.carry;
+    state.skipping = r.skipping;
+  } catch {
+    return cached ? cached.events : [];
   }
 
-  if (cumulative && best) {
-    events.push({ ts: best.ts, input: best.input, output: best.output, cacheCreate: best.cacheCreate, cacheRead: best.cacheRead });
+  let events;
+  if (cumulative) {
+    const b = state.best;
+    events = b ? [{ ts: b.ts, input: b.input, output: b.output, cacheCreate: b.cacheCreate, cacheRead: b.cacheRead }] : [];
+  } else {
+    // บรรทัดสุดท้ายที่ไม่มี \n ปิด (กำลังเขียนอยู่) ยังอยู่ใน carry — ลองแกะดูโดยไม่เก็บเข้าสถานะ
+    // ถ้าแกะได้ รอบหน้าบรรทัดนี้จะถูกอ่านซ้ำแต่ dedupe ด้วย message id อยู่แล้ว
+    state.sumEvents.sort((a, b) => a.ts - b.ts);
+    events = state.sumEvents;
+  }
+  if (state.carry && !state.skipping) {
+    const before = cumulative ? state.best : state.sumEvents.length;
+    const savedSeen = cumulative ? null : new Set(state.seen);
+    onLine(state.carry);
+    if (cumulative) {
+      const b = state.best;
+      if (b && b !== before) events = [{ ts: b.ts, input: b.input, output: b.output, cacheCreate: b.cacheCreate, cacheRead: b.cacheRead }];
+      state.best = before; // ไม่ commit บรรทัดที่ยังเขียนไม่จบ
+    } else if (state.sumEvents.length > before) {
+      events = [...state.sumEvents].sort((a, b) => a.ts - b.ts);
+      state.sumEvents.length = before;
+      state.seen = savedSeen;
+    }
   }
 
-  events.sort((a, b) => a.ts - b.ts);
-  fileCache.set(key, { mtimeMs: st.mtimeMs, size: st.size, events });
+  fileCache.set(key, { ...state, mtimeMs: st.mtimeMs, size: st.size, events });
   return events;
 }
 

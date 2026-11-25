@@ -561,6 +561,67 @@ t('ตัดข้อมูลเก่ากว่า 90 วันทิ้ง'
   eq(onDisk.providers.claude[String(hour)], 50);
 });
 
+/* ---------- อ่านไฟล์ใหญ่ทีละท่อน + อ่านต่อเฉพาะส่วนที่เพิ่ม ----------
+ * log ของ Codex ไฟล์เดียวเคยโตถึง 1.7 GB แล้ว readFileSync ทั้งก้อนทำแอปตาย (25 พ.ย. 2026) */
+console.log('\nusage.js (ไฟล์ใหญ่)');
+
+t('ไฟล์ใหญ่กว่าท่อนอ่าน 4 MB + ภาษาไทยคร่อมรอยต่อ → นับครบ ไม่เพี้ยน', () => {
+  const dir = path.join(TMP, 'big' + seq++);
+  fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, 's.jsonl');
+  const pad = JSON.stringify({ type: 'text', text: 'สวัสดีครับ'.repeat(40000) }); // ~1.2 MB ต่อบรรทัด ไม่มี usage
+  const lines = [];
+  for (let i = 0; i < 6; i++) {
+    lines.push(pad);
+    lines.push(JSON.stringify(claudeLine(NOW - H + i * 60000, { input_tokens: 100, output_tokens: 10 }, 'm' + i)));
+  }
+  fs.writeFileSync(f, lines.join('\n') + '\n', 'utf8');
+  ok(fs.statSync(f).size > 4.5 * 1024 * 1024, 'ไฟล์ทดสอบต้องใหญ่กว่าท่อนอ่าน');
+  const r = usage.computeProvider(prov(dir), PLAN_PRESETS, { now: NOW });
+  eq(r.totalEvents, 6);
+  eq(r.session.tokens, 660);
+});
+
+t('บรรทัดยาวเกิน 16 MB ถูกข้ามทั้งบรรทัด บรรทัดถัดไปยังอ่านได้', () => {
+  const dir = path.join(TMP, 'big' + seq++);
+  fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, 's.jsonl');
+  const huge = '{"type":"tool","output":"' + 'x'.repeat(17 * 1024 * 1024) + '","input_tokens":999999}';
+  const good = JSON.stringify(claudeLine(NOW - H, { input_tokens: 5, output_tokens: 5 }, 'g'));
+  fs.writeFileSync(f, huge + '\n' + good + '\n', 'utf8');
+  const r = usage.computeProvider(prov(dir), PLAN_PRESETS, { now: NOW });
+  eq(r.totalEvents, 1);
+  eq(r.session.tokens, 10);
+});
+
+t('ไฟล์โตขึ้น → อ่านต่อเฉพาะส่วนใหม่ และบรรทัดที่ยังเขียนไม่จบไม่ถูกนับซ้ำ', () => {
+  const dir = path.join(TMP, 'big' + seq++);
+  fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, 's.jsonl');
+  const L = (i) => JSON.stringify(claudeLine(NOW - H + i * 60000, { input_tokens: 100, output_tokens: 0 }, 'm' + i));
+  fs.writeFileSync(f, L(0) + '\n' + L(1), 'utf8'); // บรรทัดสุดท้ายยังไม่มี \n (กำลังเขียน)
+  const p = prov(dir);
+  eq(usage.computeProvider(p, PLAN_PRESETS, { now: NOW }).session.tokens, 200);
+  fs.appendFileSync(f, '\n' + L(2) + '\n', 'utf8');
+  const r = usage.computeProvider(p, PLAN_PRESETS, { now: NOW });
+  eq(r.totalEvents, 3, 'm1 ต้องไม่ถูกนับซ้ำ');
+  eq(r.session.tokens, 300);
+});
+
+t('cumulative-max อ่านต่อได้: ค่าสะสมสูงสุดขยับตามบรรทัดใหม่', () => {
+  const dir = path.join(TMP, 'big' + seq++);
+  fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, 'rollout.jsonl');
+  const C = (ts, n) => JSON.stringify({ timestamp: iso(ts), payload: { info: { total_token_usage: { input_tokens: n, output_tokens: 0 } } } });
+  fs.writeFileSync(f, C(NOW - H, 1000) + '\n', 'utf8');
+  const p = prov(dir, { aggregation: 'cumulative-max' });
+  eq(usage.computeProvider(p, PLAN_PRESETS, { now: NOW }).session.tokens, 1000);
+  fs.appendFileSync(f, C(NOW - H + 60000, 4000) + '\n', 'utf8');
+  const r = usage.computeProvider(p, PLAN_PRESETS, { now: NOW });
+  eq(r.totalEvents, 1);
+  eq(r.session.tokens, 4000);
+});
+
 /* ---------- Gemini CLI ---------- */
 console.log('\nusage.js (Gemini CLI)');
 
