@@ -46,6 +46,13 @@
    และไฟล์ `latest.yml` (ตัวนี้สำคัญ — auto-update ใช้เช็คเวอร์ชัน อย่าลบ)
 5. เข้าไปที่หน้า Releases บน GitHub → กด **Publish release** (ถ้ายังเป็น draft)
 
+> **ถ้าอัปโหลดไฟล์เอง (ไม่ใช้ `--publish`) ชื่อไฟล์ต้องตรงกับใน `latest.yml`** —
+> electron-builder สร้างไฟล์ชื่อ `TokenGauge Setup X.Y.Z.exe` (มีช่องว่าง) แต่ `latest.yml`
+> ชี้ไปที่ `TokenGauge-Setup-X.Y.Z.exe` (ขีด) ส่วน GitHub เปลี่ยนช่องว่างเป็นจุด
+> (`TokenGauge.Setup.X.Y.Z.exe`) ถ้าอัปโหลดดื้อ ๆ auto-update จะหาไฟล์ไม่เจอ
+> (Release v1.2.4 พลาดแบบนี้) ให้คัดลอกเปลี่ยนชื่อเป็นแบบขีดก่อน ทั้ง `.exe` และ `.exe.blockmap`
+> แล้วอัปโหลดคู่กับ `latest.yml`: `gh release create vX.Y.Z <ไฟล์ทั้งหมด> --title ... --notes ...`
+
 ผู้ใช้ที่ติดตั้งเวอร์ชันเก่าอยู่ จะได้รับอัปเดตอัตโนมัติภายในไม่กี่นาที
 หลังเปิดแอป (ดาวน์โหลดเบื้องหลัง แล้วติดตั้งตอนปิดโปรแกรม)
 
